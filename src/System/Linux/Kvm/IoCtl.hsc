@@ -34,7 +34,8 @@ c_ioctl'' :: Fd -> CInt -> Int -> IO CInt
 c_ioctl'' f req p = c_ioctl (fromIntegral f) req (intPtrToPtr $ IntPtr $ p)
 
 kvmFd:: IO KvmFd
-kvmFd = openFile "/dev/kvm" ReadWriteMode >>= fmap KvmFd . handleToFd
+kvmFd = KvmFd <$> openFd "/dev/kvm" ReadWrite Nothing defaultFileFlags
+
 
 createVM :: KvmFd -> IO VmFd -- TODO : machine type identifier
 createVM (KvmFd f) = do
@@ -48,7 +49,7 @@ createVCPU (VmFd vm) i = do
                             when (res == -1) $ fail "kvm:ioctl:failed to create VCPU"
                             return $ VcpuFd $ Fd res 
 
-setTssAddr :: VmFd -> Word -> IO ()
+setTssAddr :: VmFd -> Word64 -> IO ()
 setTssAddr (VmFd vm) addr = do
                               res <- c_ioctl'' vm (#const KVM_SET_TSS_ADDR) (fromIntegral addr)
                               when (res == -1)  $ fail "kvm:ioctl:failed to set Tss addr"
@@ -95,9 +96,9 @@ runKvm (VcpuFd cpu) = do
                         when (r == -1) $ fail "kvm:ioctl:failed to run kvm"
 
 
-setIdentityMap :: VmFd -> Word -> IO ()
+setIdentityMap :: VmFd -> Word64 -> IO ()
 setIdentityMap (VmFd fd) addr = do
-                                  r <- with ((fromIntegral addr)::Word64) $ c_ioctl' fd (#const KVM_SET_IDENTITY_MAP_ADDR)
+                                  r <- with addr $ c_ioctl' fd (#const KVM_SET_IDENTITY_MAP_ADDR)
                                   when (r == -1) $ fail "kvm:ioctl:set identity map addr returned an error"
 
 createIRQChip :: VmFd -> IO ()

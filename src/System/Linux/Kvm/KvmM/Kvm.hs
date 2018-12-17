@@ -1,9 +1,19 @@
 {-# LANGUAGE TemplateHaskell #-}
-module System.Linux.Kvm.KvmM.Kvm where
+module System.Linux.Kvm.KvmM.Kvm
+(
+  -- * Vm Monad
+  KvmM
+ ,runKvmM
+  -- * Vm Properties
+ ,kvmfd
+)
+where
 
 import Control.Lens
 import System.Linux.Kvm.IoCtl
 import Control.Monad.State.Strict
+import Control.Monad.IO.Class
+import System.Posix.IO
 
 data KvmMInternal = KvmMInternal
   {
@@ -11,12 +21,15 @@ data KvmMInternal = KvmMInternal
   }
 makeLenses ''KvmMInternal
 
-type KvmM = StateT KvmMInternal IO
+-- | A 'Monad' where Kvm runs in
+type KvmM m = StateT KvmMInternal m
 
-runKvmM::KvmM a -> IO a
+-- | Runs the 'KvmM' monad inside the 'm' monad
+runKvmM::MonadIO m => KvmM m a -> m a
 runKvmM act = do
-                fd <- kvmFd
-                evalStateT act $ KvmMInternal {
-                    _kvmfd = fd
+                kvmfd@(KvmFd fd) <- liftIO kvmFd
+                res <- evalStateT act $ KvmMInternal {
+                    _kvmfd = kvmfd
                 }
-                -- TODO : close Fd
+                liftIO $ closeFd fd
+                return res

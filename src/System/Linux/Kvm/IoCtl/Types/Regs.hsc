@@ -1,6 +1,31 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module System.Linux.Kvm.IoCtl.Types.Regs where
+module System.Linux.Kvm.IoCtl.Types.Regs
+(
+  -- * Data
+  Regs
+ ,emptyRegs
+  -- * Accessors
+ ,rax 
+ ,rbx
+ ,rcx
+ ,rdx
+ ,rsi
+ ,rdi
+ ,rsp
+ ,rbp
+ ,r8
+ ,r9
+ ,r10
+ ,r11
+ ,r12
+ ,r13
+ ,r14
+ ,r15
+ ,rip
+ ,rflags
+)
+where
 
 import Foreign.C.Types
 import Foreign

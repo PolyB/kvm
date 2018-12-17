@@ -11,7 +11,7 @@ import Data.Bits
 import Data.Array.IArray
 import qualified Data.ByteString as B
 
-vmSetup :: VmM ()
+vmSetup :: VmM IO ()
 vmSetup = do
               setTss 0xffffd000
               setIdentityMap 0xffffc000
@@ -26,7 +26,7 @@ vmSetup = do
               liftIO $ putStrLn "setup"
             
 
-vmStartup :: CpuM ()
+vmStartup :: CpuM IO ()
 vmStartup = do
               let setseg seg = (seg.base .= 0) >> (seg.limit .= 0xffffffff) >> (seg.g .= 1)
               setseg $ sregs.cs
@@ -42,7 +42,7 @@ vmStartup = do
 
               liftIO $ putStrLn "startup"
 
-vmHandle :: KvmRunExit -> KvmRunBase -> CpuM ()
+vmHandle :: KvmRunExit -> KvmRunBase -> CpuM IO ()
 vmHandle (KvmRunExitIo io) a = case (io^.port, io^.direction) of 
                                   (1016, IoDirectionOut) -> liftIO $ B.putStr $ B.pack (elems (io^.iodata))
                                   _ -> liftIO $ putStrLn "other" >> print io
@@ -53,7 +53,7 @@ vmHandle a b = do
                   liftIO $ print rgs
                   lift $ stopVm
 
-vmStop :: CpuM ()
+vmStop :: CpuM IO ()
 vmStop = do
           liftIO $ putStrLn "stop"
 

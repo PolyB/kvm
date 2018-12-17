@@ -1,21 +1,22 @@
 {-# LANGUAGE TemplateHaskell #-}
 module System.Linux.Kvm.KvmM.Cpu 
   (
-    CpuMInternal()
-   ,regs
-   ,sregs
+    -- * ReExports
+    module System.Linux.Kvm.IoCtl.Types.Regs
+   ,module System.Linux.Kvm.IoCtl.Types.SRegs
+    -- * Cpu Monad
    ,CpuM
    ,runCpuM
    ,cpuContinue
+   -- * Cpu Properties
    ,getExitReason
-   ,module System.Linux.Kvm.IoCtl.Types.Regs
-   ,module System.Linux.Kvm.IoCtl.Types.SRegs
+   ,regs
+   ,sregs
   ) 
 where
 
 import Control.Lens
 import System.Linux.Kvm.KvmM.Vm
-import System.Linux.Kvm.KvmM.Utils
 import System.Linux.Kvm.IoCtl
 import System.Linux.Kvm.IoCtl.Types
 import System.Linux.Kvm.IoCtl.Types.Regs
@@ -38,9 +39,10 @@ data CpuMInternal = CpuMInternal
   }
 makeLenses ''CpuMInternal
 
-type CpuM = StateT CpuMInternal VmM
+type CpuM m = StateT CpuMInternal (VmM m)
 
-cpuContinue:: CpuM ()
+-- | Continue the Vm, calls /KVM_RUN/ behind and update the 'CpuM' monad with the new Vm informations
+cpuContinue:: MonadIO m => CpuM m ()
 cpuContinue = do
                   fd <- use cpufd
                   cregs <- use regs
@@ -57,7 +59,8 @@ cpuContinue = do
                   regs_before .= newregs
                   sregs_before .= newsregs
 
-runCpuM :: CpuM a -> VmM a
+-- | Create a CPU and run it inside a 'CpuM' m monad
+runCpuM :: MonadIO m => CpuM m a -> VmM m a
 runCpuM act = do
               vm <- use vmfd 
               fd <- liftIO $ createVCPU vm 0 -- TODO : modify if multiple cpus is needed
@@ -73,8 +76,8 @@ runCpuM act = do
                ,_sregs_before =  newsregs
                ,_kvm_run = kvmrunptr
               }
-
-getExitReason:: CpuM (KvmRunExit, KvmRunBase)
+-- | Returns the exit reasons of the CPU
+getExitReason:: MonadIO m => CpuM m (KvmRunExit, KvmRunBase)
 getExitReason = do
                   kvmrunptr <- use kvm_run
                   (KvmRun base exit) <- liftIO $ peekKvmRun kvmrunptr

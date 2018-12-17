@@ -1,7 +1,6 @@
 module System.Linux.Kvm.KvmM 
   (
-    module System.Linux.Kvm.KvmM.Access
-   ,module System.Linux.Kvm.KvmM.Kvm
+    module System.Linux.Kvm.KvmM.Kvm
    ,module System.Linux.Kvm.KvmM.Cpu
    ,module System.Linux.Kvm.KvmM.Vm
   )
@@ -9,7 +8,6 @@ where
 
 import Control.Monad.IO.Class
 import Foreign.Ptr
-import System.Linux.Kvm.KvmM.Access
 import System.Linux.Kvm.KvmM.Kvm
 import System.Linux.Kvm.KvmM.Cpu
 import System.Linux.Kvm.KvmM.Vm
@@ -20,6 +18,3 @@ import Control.Monad.Reader.Class
 import Control.Monad.State.Class
 import Control.Monad.State.Strict
 import Data.Maybe (isJust)
-
-
--- definition of the Kvm Monad
