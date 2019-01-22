@@ -1,4 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ConstraintKinds  #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module System.Linux.Kvm.IoCtl.Types.KvmRun.KvmRunBase where
 
@@ -10,6 +12,7 @@ import Control.Lens
 import System.Linux.Kvm.IoCtl.Types.Segment
 import System.Linux.Kvm.IoCtl.Types.DTable
 import System.Linux.Kvm.IoCtl.Types.InterruptMask
+import qualified Ether.State as I
 
 #include <linux/kvm.h>
 
@@ -28,6 +31,11 @@ data KvmRunBase = KvmRunBase
   deriving (Show, Eq)
 makeLenses ''KvmRunBase
 
+
+type KvmRunT m = I.StateT' KvmRunBase m
+
+type MonadKvmRun m = I.MonadState' KvmRunBase m
+
 peekKvmRunBase:: Ptr KvmRunBase -> IO KvmRunBase
 peekKvmRunBase ptr = KvmRunBase <$> (#peek struct kvm_run, request_interrupt_window) ptr
                                 <*> (#peek struct kvm_run, immediate_exit) ptr
@@ -37,6 +45,7 @@ peekKvmRunBase ptr = KvmRunBase <$> (#peek struct kvm_run, request_interrupt_win
                                 <*> (#peek struct kvm_run, flags) ptr
                                 <*> (#peek struct kvm_run, cr8) ptr
                                 <*> (#peek struct kvm_run, apic_base) ptr
+
 pokeKvmRunBase :: Ptr KvmRunBase -> KvmRunBase -> IO ()
 pokeKvmRunBase ptr v = (#poke struct kvm_run, request_interrupt_window) ptr (v^.request_interrupt_window)
                     >> (#poke struct kvm_run, immediate_exit) ptr (v^.immediate_exit)

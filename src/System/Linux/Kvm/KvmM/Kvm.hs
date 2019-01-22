@@ -1,35 +1,43 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+
 module System.Linux.Kvm.KvmM.Kvm
 (
-  -- * Vm Monad
-  KvmM
- ,runKvmM
-  -- * Vm Properties
+  -- * KVM Monad Transformer
+  KvmT
+ ,runKvmT
+ ,MonadKvm
+  -- * KVM Properties
  ,kvmfd
 )
 where
 
-import Control.Lens
-import System.Linux.Kvm.IoCtl
-import Control.Monad.State.Strict
-import Control.Monad.IO.Class
+import qualified System.Linux.Kvm.IoCtl as C
+import System.Linux.Kvm.Errors
 import System.Posix.IO
+import Control.Monad.IO.Class
+import qualified Ether.Reader as I
 
-data KvmMInternal = KvmMInternal
+data Kvm = Kvm
   {
-    _kvmfd :: KvmFd
+    _kvmfd :: C.KvmFd
   }
-makeLenses ''KvmMInternal
 
--- | A 'Monad' where Kvm runs in
-type KvmM m = StateT KvmMInternal m
+-- | A 'MonadTransformer' where Kvm runs in
+type KvmT m = I.ReaderT' Kvm m
 
--- | Runs the 'KvmM' monad inside the 'm' monad
-runKvmM::MonadIO m => KvmM m a -> m a
-runKvmM act = do
-                kvmfd@(KvmFd fd) <- liftIO kvmFd
-                res <- evalStateT act $ KvmMInternal {
+type MonadKvm m = I.MonadReader' Kvm m
+
+-- | Runs the 'KvmT' 'monadTransformer'
+runKvmT::(MonadError m, MonadIO m) => KvmT m a -> m a
+runKvmT act = do
+                kvmfd@(C.KvmFd fd) <- execIO C.kvmFd
+                res <- I.runReaderT' act $ Kvm {
                     _kvmfd = kvmfd
                 }
-                liftIO $ closeFd fd
+                execIO $ closeFd fd
                 return res
+
+kvmfd :: MonadKvm m => m C.KvmFd
+kvmfd = I.asks' _kvmfd

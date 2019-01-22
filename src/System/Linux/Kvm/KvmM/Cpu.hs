@@ -1,13 +1,20 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ConstraintKinds  #-}
+{-# LANGUAGE FlexibleContexts #-}
+
 module System.Linux.Kvm.KvmM.Cpu 
   (
     -- * ReExports
     module System.Linux.Kvm.IoCtl.Types.Regs
    ,module System.Linux.Kvm.IoCtl.Types.SRegs
     -- * Cpu Monad
-   ,CpuM
-   ,runCpuM
+   ,Cpu
+   ,CpuT
+   ,runCpuT
    ,cpuContinue
+   ,cpuContinueUntilVmEnd
+   ,MonadCpu
    -- * Cpu Properties
    ,getExitReason
    ,regs
@@ -15,20 +22,24 @@ module System.Linux.Kvm.KvmM.Cpu
   ) 
 where
 
+import System.Linux.Kvm.Errors
 import Control.Lens
 import System.Linux.Kvm.KvmM.Vm
 import System.Linux.Kvm.IoCtl
 import System.Linux.Kvm.IoCtl.Types
 import System.Linux.Kvm.IoCtl.Types.Regs
 import System.Linux.Kvm.IoCtl.Types.SRegs
-import Control.Monad.State.Strict
 import Data.Void
 import System.Linux.Kvm.IoCtl.Types.KvmRun
 import Foreign.Ptr
 import System.Linux.Kvm.KvmM.Kvm
+import Control.Monad.IO.Class
+import qualified Ether.State as I
+import qualified Ether.TagDispatch as I
+import Control.Monad
 
 
-data CpuMInternal = CpuMInternal
+data Cpu = Cpu
   {
     _cpufd :: VcpuFd
    ,_regs :: Regs
@@ -37,38 +48,47 @@ data CpuMInternal = CpuMInternal
    ,_sregs_before :: SRegs
    ,_kvm_run :: Ptr KvmRun
   }
-makeLenses ''CpuMInternal
+makeLenses ''Cpu
 
-type CpuM m = StateT CpuMInternal (VmM m)
+type CpuT m = I.StateT' Cpu m
 
--- | Continue the Vm, calls /KVM_RUN/ behind and update the 'CpuM' monad with the new Vm informations
-cpuContinue:: MonadIO m => CpuM m ()
+type MonadCpu m = I.MonadState' Cpu m
+
+-- | Continue the Vm, calls /KVM_RUN/ behind and update the 'CpuT' monad with the new informations
+cpuContinue:: (MonadError m, MonadIO m, MonadCpu m) => m ()
 cpuContinue = do
-                  fd <- use cpufd
-                  cregs <- use regs
-                  csregs <- use sregs
-                  oregs <- use regs_before
-                  osregs <- use sregs_before
+                  fd <- I.gets' _cpufd
+                  cregs <- I.gets' _regs
+                  csregs <- I.gets' _sregs
+                  oregs <- I.gets' _regs_before
+                  osregs <- I.gets' _sregs_before
                   when (cregs /= oregs) $ liftIO $ setRegs fd cregs
                   when (csregs /= osregs) $ liftIO $ setSRegs fd csregs
-                  liftIO $ runKvm fd
+                  execIO $ runKvm fd
                   newregs <- liftIO $ getRegs fd
                   newsregs <- liftIO $ getSRegs fd
-                  regs .= newregs
-                  sregs .= newsregs
-                  regs_before .= newregs
-                  sregs_before .= newsregs
+                  I.tagAttach @Cpu $ do
+                    regs .= newregs
+                    sregs .= newsregs
+                    regs_before .= newregs
+                    sregs_before .= newsregs
 
--- | Create a CPU and run it inside a 'CpuM' m monad
-runCpuM :: MonadIO m => CpuM m a -> VmM m a
-runCpuM act = do
-              vm <- use vmfd 
-              fd <- liftIO $ createVCPU vm 0 -- TODO : modify if multiple cpus is needed
-              kvmfd <- lift $ use kvmfd
+cpuContinueUntilVmEnd::(MonadError m, MonadIO m, MonadCpu m, MonadVm m) => (KvmRunExit -> KvmRunT m ()) -> m ()
+cpuContinueUntilVmEnd act = doContinueVm >>= (\cont -> if cont then cpuContinue >> do
+                                                                                    (exit, base) <- getExitReason
+                                                                                    I.evalStateT' (act exit) base
+                                                                                    cpuContinueUntilVmEnd act else return ())
+
+-- | Create a CPU and run it inside a 'CpuT' 'MonadTransformer'
+runCpuT :: (MonadError m, MonadVm m, MonadKvm m, MonadIO m) => CpuT m a -> m a
+runCpuT act = do
+              vm <- vmfd 
+              fd <- execIO $ createVCPU vm 0 -- TODO : modify if multiple cpus is needed
+              kvmfd <- kvmfd
               kvmrunptr <- liftIO $ allocKvmRun kvmfd fd
               newregs <- liftIO $ getRegs fd
               newsregs <- liftIO $ getSRegs fd
-              evalStateT act $ CpuMInternal {
+              I.evalStateT' act $ Cpu {
                 _cpufd = fd
                ,_regs = newregs
                ,_regs_before = newregs
@@ -77,8 +97,8 @@ runCpuM act = do
                ,_kvm_run = kvmrunptr
               }
 -- | Returns the exit reasons of the CPU
-getExitReason:: MonadIO m => CpuM m (KvmRunExit, KvmRunBase)
+getExitReason:: (MonadCpu m, MonadIO m) => m (KvmRunExit, KvmRunBase)
 getExitReason = do
-                  kvmrunptr <- use kvm_run
+                  kvmrunptr <- I.gets' _kvm_run
                   (KvmRun base exit) <- liftIO $ peekKvmRun kvmrunptr
                   return (exit, base)

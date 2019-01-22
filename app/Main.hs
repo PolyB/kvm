@@ -1,17 +1,23 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
 module Main where
 
 import Control.Lens
+import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
 import Foreign.Marshal.Array
 import System.Linux.Kvm
 import System.Linux.Kvm.IoCtl.Types.Segment
 import System.Linux.Kvm.IoCtl.Types.KvmRun.KvmRunExit.Io
+import System.Linux.Kvm.Components.Ram
+import System.Linux.Kvm.Components.Console
 import Data.Bits
 import Data.Array.IArray
-import qualified Data.ByteString as B
+import qualified Ether.TagDispatch as I
 
-vmSetup :: VmM IO ()
+import Args
+
+vmSetup :: (MonadIO m, MonadRam m, MonadError m, MonadVm m) => m ()
 vmSetup = do
               setTss 0xffffd000
               setIdentityMap 0xffffc000
@@ -26,44 +32,38 @@ vmSetup = do
               liftIO $ putStrLn "setup"
             
 
-vmStartup :: CpuM IO ()
+vmStartup :: (MonadIO m, MonadError m, MonadCpu m) => m ()
 vmStartup = do
               let setseg seg = (seg.base .= 0) >> (seg.limit .= 0xffffffff) >> (seg.g .= 1)
-              setseg $ sregs.cs
-              sregs.cs.db .= 1
-              setseg $ sregs.ds
-              setseg $ sregs.ss
-              sregs.ss.db .= 1
+              I.tagAttach @Cpu $ do setseg $ sregs.cs
+                                    sregs.cs.db .= 1
+                                    setseg $ sregs.ds
+                                    setseg $ sregs.ss
+                                    sregs.ss.db .= 1
 
-              sregs.cr0 %= (.|.1)
+                                    sregs.cr0 %= (.|.1)
 
-              regs.rflags .= 2
-              regs.rip .= 0x100000
+                                    regs.rflags .= 2
+                                    regs.rip .= 0x100000
 
               liftIO $ putStrLn "startup"
 
-vmHandle :: KvmRunExit -> KvmRunBase -> CpuM IO ()
-vmHandle (KvmRunExitIo io) a = case (io^.port, io^.direction) of 
-                                  (1016, IoDirectionOut) -> liftIO $ B.putStr $ B.pack (elems (io^.iodata))
-                                  _ -> liftIO $ putStrLn "other" >> print io
-vmHandle a b = do
-                  liftIO $ putStrLn "got unhandled exit :" >> print b >> print a
+vmHandle :: (MonadIO m, MonadVm m, MonadCpu m, MonadConsole m) => KvmRunExit -> KvmRunT m ()
+vmHandle (KvmRunExitIo io) = case (io^.port, io^.direction) of 
+                                (1016, IoDirectionOut) -> forM_ (elems (io^.iodata)) writebyte 
+                                _ -> liftIO $ putStrLn "other" >> print io
+vmHandle a = do
+                liftIO $ putStrLn "got unhandled exit :" >> print a
 
-                  rgs <- use regs
-                  liftIO $ print rgs
-                  lift $ stopVm
+                stopVm
 
-vmStop :: CpuM IO ()
+vmStop :: (MonadIO m) => m ()
 vmStop = do
           liftIO $ putStrLn "stop"
 
 main :: IO ()
-main = do
-        startVm $ VMInstance {
-          setup = vmSetup
-         ,startup = vmStartup
-         ,handle = vmHandle
-         ,stop = vmStop
-        }
-
+main = do parseArgs $ do
+                    x <- runError $ runKvmT $ runVmT $ vmSetup >> (runCpuT $ vmStartup >> cpuContinueUntilVmEnd vmHandle) >> vmStop
+                    either (\err -> liftIO $ putStrLn $ "error " ++ show err) (const $ return ()) x
+          putStrLn "test"
 
