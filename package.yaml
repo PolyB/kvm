@@ -45,6 +45,7 @@ executables:
     - kvm
     - lens
     - transformers
+    - optparse-applicative
 
 tests:
   kvm-test:

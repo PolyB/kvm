@@ -66,7 +66,7 @@ loadBzImage = (`I.evalStateT'`emptySetupHeader)$ do
                 I.put' setupHeader
                 -- check setupHeader
                 when (header setupHeader /= setupHeaderMagic) $ I.throw' ErrorBadKernelFile
-                when (version setupHeader /= bootProtocolRequired) $ I.throw' ErrorKernelTooOld
+                when (version setupHeader < bootProtocolRequired) $ I.throw' ErrorKernelTooOld
                 -- copy setup.bin
                 let kernSetupSects = if (setup_sects setupHeader /= 0) then (setup_sects setupHeader) else bzDefaultSects
                 let setupBinSize = 512 * (fromIntegral kernSetupSects)

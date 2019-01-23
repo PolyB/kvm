@@ -11,10 +11,10 @@ import System.Linux.Kvm.IoCtl.Types.Segment
 import System.Linux.Kvm.IoCtl.Types.KvmRun.KvmRunExit.Io
 import System.Linux.Kvm.Components.Ram
 import System.Linux.Kvm.Components.Init
-import System.Linux.Kvm.Components.Console
 import Data.Bits
 import Data.Array.IArray
 import qualified Ether.TagDispatch as I
+import qualified Data.ByteString as B
 
 import Args
 
@@ -49,9 +49,9 @@ vmStartup = do
 
               liftIO $ putStrLn "startup"
 
-vmHandle :: (MonadIO m, MonadVm m, MonadCpu m, MonadConsole m) => KvmRunExit -> KvmRunT m ()
+vmHandle :: (MonadIO m, MonadVm m, MonadCpu m) => KvmRunExit -> KvmRunT m ()
 vmHandle (KvmRunExitIo io) = case (io^.port, io^.direction) of 
-                                (1016, IoDirectionOut) -> forM_ (elems (io^.iodata)) writebyte 
+                                (1016, IoDirectionOut) -> liftIO $ B.putStr $ B.pack (elems (io^.iodata))
                                 _ -> liftIO $ putStrLn "other" >> print io
 vmHandle a = do
                 liftIO $ putStrLn "got unhandled exit :" >> print a
@@ -67,4 +67,3 @@ main = do parseArgs $ do
                     x <- runError $ runKvmT $ runVmT $ runRam $ loadBzImage >>  (runCpuT $ vmStartup >> cpuContinueUntilVmEnd vmHandle) >> vmStop
                     either (\err -> liftIO $ putStrLn $ "error " ++ show err) (const $ return ()) x
           putStrLn "test"
-
