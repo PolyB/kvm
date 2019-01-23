@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ConstraintKinds  #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
 
 module System.Linux.Kvm.KvmM.Vm
 (
@@ -14,10 +14,7 @@ module System.Linux.Kvm.KvmM.Vm
  ,setTss
  ,setIdentityMap
  ,createIRQChip
- ,createMemRegion
- ,createMemRegionFile
  -- * Vm Properties
- ,memRegions
  ,doContinueVm
  ,vmfd
  
@@ -31,16 +28,14 @@ import qualified Ether.State as I
 import qualified Ether.TagDispatch as I
 import Foreign
 import System.Linux.Kvm.Errors
-import System.Linux.Kvm.IoCtl.Types.UserspaceMemoryRegion
 import System.Posix.IO
 import System.Posix.Files
 import Control.Monad.IO.Class
-import System.Linux.Kvm.Components.Ram
+-- import System.Linux.Kvm.Components.Ram
 
 data Vm = Vm
   {
      _continueVm :: Bool
-    ,_userSpaceMemRegions :: [UserspaceMemoryRegion]
     ,_fd :: C.VmFd
   }
 makeLenses ''Vm
@@ -59,7 +54,6 @@ runVmT act = do
               res <- I.evalStateT' act $ Vm {
                  _continueVm = True
                 ,_fd = fd
-                ,_userSpaceMemRegions = []
               }
               execIO $ closeFd rawfd
               return res
@@ -86,42 +80,31 @@ createIRQChip = do
                   execIO $ C.createIRQChip fd
 
 
-mapMemRegion:: (MonadError m, MonadVm m, MonadIO m) => Ptr () -> Int -> Word64 -> m ()
-mapMemRegion host size guest = do
-                                    max_slot <- I.tagAttach @Vm $ use $ userSpaceMemRegions.to (map _slot).to (\x -> if null x then 0 else 1 + (maximum x))
-                                    let newslot = UserspaceMemoryRegion { _slot = max_slot, _flags = 0, _guest_phys_addr = guest, _memory_size = (fromIntegral size), _userspace_addr = host }
-                                    I.tagAttach @Vm $ userSpaceMemRegions %= (newslot:)
-                                    fd <- vmfd
-                                    execIO $ C.setUserMemoryRegion fd newslot
 -- | Create a memory region initialized from a file
-createMemRegionFile :: (MonadError m, MonadVm m, MonadIO m, MonadRam m) => 
-                      FilePath -- ^ Path to the file
-                      -> Word64  -- ^ Address target in the guest Vm
-                      -> m (Ptr Word8) -- ^ A 'Ptr' to where the memory region is mapped in the file
-createMemRegionFile path guestAddr = let align i v = case v `mod` i of
-                                                       0 -> v
-                                                       n -> v + (i - n)
-                                     in do
-                                        fd <- execIO $ openFd path ReadOnly Nothing defaultFileFlags
-                                        size <- liftIO $ align 4096<$> fromIntegral<$> fileSize <$> getFileStatus path
-                                        ptr <- castPtr <$> mmap size
-                                        liftIO $ fdReadBuf fd ptr (fromIntegral size)
-                                        mapMemRegion (castPtr ptr) size guestAddr
-                                        return $ ptr
+-- createMemRegionFile :: (MonadError m, MonadVm m, MonadIO m, MonadRam m) => 
+--                       FilePath -- ^ Path to the file
+--                       -> Word64  -- ^ Address target in the guest Vm
+--                       -> m (Ptr Word8) -- ^ A 'Ptr' to where the memory region is mapped in the file
+-- createMemRegionFile path guestAddr = let align i v = case v `mod` i of
+--                                                        0 -> v
+--                                                        n -> v + (i - n)
+--                                      in do
+--                                         fd <- execIO $ openFd path ReadOnly Nothing defaultFileFlags
+--                                         size <- liftIO $ align 4096<$> fromIntegral<$> fileSize <$> getFileStatus path
+--                                         ptr <- castPtr <$> mmap size
+--                                         liftIO $ fdReadBuf fd ptr (fromIntegral size)
+--                                         mapMemRegion (castPtr ptr) size guestAddr
+--                                         return $ ptr
 
 -- | Create an uninitialized memory region
-createMemRegion :: (MonadError m, MonadVm m, MonadIO m, MonadRam m) => 
-                   Int -- ^ The size of the memory region
-                   -> Word64 -- ^ Address target in the guest Vm
-                   -> m (Ptr Word8) -- ^ A 'Ptr' to where the memory region is mapped in the file
-createMemRegion size guestAddr = do
-                                    ptr <- mmap size
-                                    mapMemRegion ptr size guestAddr
-                                    return $ castPtr ptr
-
--- | 'Getter' to the 'userSpaceMemRegions' list of the Vm
-memRegions ::Getter Vm [UserspaceMemoryRegion]
-memRegions = userSpaceMemRegions
+-- createMemRegion :: (MonadError m, MonadVm m, MonadIO m, MonadRam m) => 
+--                    Int -- ^ The size of the memory region
+--                    -> Word64 -- ^ Address target in the guest Vm
+--                    -> m (Ptr Word8) -- ^ A 'Ptr' to where the memory region is mapped in the file
+-- createMemRegion size guestAddr = do
+--                                     ptr <- mmap size
+--                                     mapMemRegion ptr size guestAddr
+--                                     return $ castPtr ptr
 
 vmfd :: (MonadVm m) => m C.VmFd
 vmfd = I.gets' _fd

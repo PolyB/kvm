@@ -10,6 +10,7 @@ import System.Linux.Kvm
 import System.Linux.Kvm.IoCtl.Types.Segment
 import System.Linux.Kvm.IoCtl.Types.KvmRun.KvmRunExit.Io
 import System.Linux.Kvm.Components.Ram
+import System.Linux.Kvm.Components.Init
 import System.Linux.Kvm.Components.Console
 import Data.Bits
 import Data.Array.IArray
@@ -17,19 +18,19 @@ import qualified Ether.TagDispatch as I
 
 import Args
 
-vmSetup :: (MonadIO m, MonadRam m, MonadError m, MonadVm m) => m ()
-vmSetup = do
-              setTss 0xffffd000
-              setIdentityMap 0xffffc000
-              ptr <- createMemRegion 4096 0x100000
-              liftIO $ pokeArray ptr [0xba, 0xf8, 0x03 -- mov 3f8 -> dx
-                                     ,0x00, 0xb8 -- add bl, al
-                                     ,0xb0, 0x41 -- mov 0xAA, al
-                                     ,0xee -- out al (dx)
-                                     ,0xee -- out al (dx)
-                                     ,0xf4 -- hlt
-                                     ]
-              liftIO $ putStrLn "setup"
+-- vmSetup :: (MonadIO m, MonadRam m, MonadError m, MonadVm m) => m ()
+-- vmSetup = do
+--               setTss 0xffffd000
+--               setIdentityMap 0xffffc000
+--               ptr <- createMemRegion 4096 0x100000
+--               liftIO $ pokeArray ptr [0xba, 0xf8, 0x03 -- mov 3f8 -> dx
+--                                      ,0x00, 0xb8 -- add bl, al
+--                                      ,0xb0, 0x41 -- mov 0xAA, al
+--                                      ,0xee -- out al (dx)
+--                                      ,0xee -- out al (dx)
+--                                      ,0xf4 -- hlt
+--                                      ]
+--               liftIO $ putStrLn "setup"
             
 
 vmStartup :: (MonadIO m, MonadError m, MonadCpu m) => m ()
@@ -63,7 +64,7 @@ vmStop = do
 
 main :: IO ()
 main = do parseArgs $ do
-                    x <- runError $ runKvmT $ runVmT $ vmSetup >> (runCpuT $ vmStartup >> cpuContinueUntilVmEnd vmHandle) >> vmStop
+                    x <- runError $ runKvmT $ runVmT $ runRam $ loadBzImage >>  (runCpuT $ vmStartup >> cpuContinueUntilVmEnd vmHandle) >> vmStop
                     either (\err -> liftIO $ putStrLn $ "error " ++ show err) (const $ return ()) x
           putStrLn "test"
 

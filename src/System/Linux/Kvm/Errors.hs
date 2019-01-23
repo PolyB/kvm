@@ -16,6 +16,8 @@ import Control.Monad.IO.Class
 
 data Error = ErrorIO IOException
            | ErrorTooMuchRamUsed
+           | ErrorBadKernelFile
+           | ErrorKernelTooOld
            deriving (Show)
 
 

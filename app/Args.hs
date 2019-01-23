@@ -12,7 +12,7 @@ import Text.Read
 import Control.Monad
 import System.Environment
 
-type OptionMonad = RamT (ConsoleT (InitT IO))
+type OptionMonad = ConfigRamT (ConsoleT (InitT IO))
 
 data Options = Options
     { file :: String
@@ -54,7 +54,7 @@ showErr:: String -> IO ()
 showErr err = putStrLn $ "arg parsing failed : " ++ err -- TODO : better error message
 
 continueWithOpts:: Options -> OptionMonad () -> IO ()
-continueWithOpts (Options kern root initrd console ram) m = runInit kern initrd $ runConsole console $ runRam ram m
+continueWithOpts (Options kern root initrd console ram) m = runInit kern initrd "" $ runConsole console $ runConfigRam ram m
 
 parseArgs :: OptionMonad () -> IO ()
 parseArgs continue = doParse <$> getArgs >>= \x -> (case x of
