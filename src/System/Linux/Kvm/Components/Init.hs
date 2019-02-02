@@ -1,14 +1,22 @@
 {-# LANGUAGE ConstraintKinds  #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
-module System.Linux.Kvm.Components.Init (Init, InitT, MonadInit, runInit, loadBzImage) where
+module System.Linux.Kvm.Components.Init (Init, InitT, MonadInit, runInit, loadBzImage, initCpuRegs) where
 
 import qualified Ether.State as I
 import qualified Ether.Except as I
+import qualified Ether.TagDispatch as I
 import System.Linux.Kvm.KvmM.Vm
+import System.Linux.Kvm.KvmM.Cpu
 import System.Linux.Kvm.Errors
+import System.Linux.Kvm.IoCtl.Types.Segment
 import System.Linux.Kvm.Components.Init.SetupHeader
+import System.Linux.Kvm.Debug
+import System.Linux.Kvm.IoCtl.Types.Regs
+import System.Linux.Kvm.IoCtl.Types.SRegs
 import System.Linux.Kvm.Components.Ram
 import Control.Monad.IO.Class
+import Control.Lens
 import System.Posix.Types
 import System.Posix.IO
 import Foreign.Marshal.Alloc
@@ -50,6 +58,7 @@ bzKernelStart =  0x100000
 
 bootLoaderSector = 0x1000
 bootLoaderIp = 0
+bootLoaderSp = 0x8000
 
 
 readAllFile:: (MonadIO m, MonadError m) => Fd -> Ptr () -> m ()
@@ -74,6 +83,7 @@ loadBzImage = (`I.evalStateT'`emptySetupHeader)$ do
                 _ <- execIO $ fdSeek kernFd AbsoluteSeek 0
                 bytesRead <- execIO $ fdReadBuf kernFd (castPtr setupBinPos) (setupBinSize)
                 when (bytesRead /= setupBinSize) $ I.throw' ErrorBadKernelFile
+                liftIO $ dumpMem (castPtr setupBinPos) 20
                 -- copy vmlinux.bin
                 vmlinuxBinPtr <- flatToHost bzKernelStart
                 readAllFile kernFd vmlinuxBinPtr
@@ -85,3 +95,27 @@ loadBzImage = (`I.evalStateT'`emptySetupHeader)$ do
                 -- copy initrd
                 -- TODO
                 I.get' >>= (\x -> execIO $ pokeSetupHeader (getSetupHeader (castPtr setupBinPos)) x)
+
+setupRegs:: Regs -> Regs
+setupRegs x = x { _rflags = 0x2
+                , _rip = bootLoaderIp + 0x200
+                , _rsp = bootLoaderSp
+                , _rbp = bootLoaderSp
+                }
+
+
+setupSRegs:: SRegs -> SRegs
+setupSRegs x = let selToBase s = 16 * (fromIntegral s)
+                   segment seg = seg { _base = selToBase bootLoaderSector, _selector = bootLoaderSector }
+                in x { _cs = segment (x^.cs) 
+                     , _ss = segment (x^.ss)
+                     , _ds = segment (x^.ds)
+                     , _es = segment (x^.es)
+                     , _fs = segment (x^.fs)
+                     , _gs = segment (x^.gs)
+                     , _cr0 = clearBit (x^.cr0) 0
+                     }
+initCpuRegs::MonadCpu m => m ()
+initCpuRegs = I.tagAttach @Cpu $ do
+                                    regs %= setupRegs
+                                    sregs %= setupSRegs

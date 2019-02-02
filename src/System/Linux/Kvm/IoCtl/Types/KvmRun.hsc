@@ -56,7 +56,7 @@ data KvmRunExit
   | KvmRunExitIoApicEoi IoapicEoi
   | KvmRunExitHyperv Hyperv
   | KvmRunExitHlt
-  | KvmRunExitNotImplemented
+  | KvmRunExitNotImplemented Word32
   deriving (Show, Eq)
 
 
@@ -88,7 +88,7 @@ peekKvmRunExit (#const KVM_EXIT_SYSTEM_EVENT)   = fmap KvmRunExitSystemEvent . p
 peekKvmRunExit (#const KVM_EXIT_IOAPIC_EOI)     = fmap KvmRunExitIoApicEoi . peekKvmRunExitIoapicEoi
 peekKvmRunExit (#const KVM_EXIT_HYPERV)         = fmap KvmRunExitHyperv . peekKvmRunExitHyperv
 peekKvmRunExit (#const KVM_EXIT_HLT)            = const $ return KvmRunExitHlt
-peekKvmRunExit _ = const $ return $ KvmRunExitNotImplemented
+peekKvmRunExit x = const $ return $ KvmRunExitNotImplemented x
 
 
 

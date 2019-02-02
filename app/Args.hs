@@ -1,15 +1,9 @@
 {-# LANGUAGE ViewPatterns #-}
 module Args (parseArgs, OptionMonad) where
 
-import qualified Ether.State as I
-import qualified Ether.Except as I
-import qualified Ether.Reader as I
 import System.Linux.Kvm.Components.Init
 import System.Linux.Kvm.Components.Ram
 import Data.List
-import Text.Read
-import Control.Monad
-import System.Environment
 import Options.Applicative
 
 type OptionMonad = ConfigRamT (InitT IO)

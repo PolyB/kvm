@@ -29,7 +29,6 @@ import qualified Ether.TagDispatch as I
 import Foreign
 import System.Linux.Kvm.Errors
 import System.Posix.IO
-import System.Posix.Files
 import Control.Monad.IO.Class
 -- import System.Linux.Kvm.Components.Ram
 
@@ -78,33 +77,6 @@ createIRQChip :: (MonadError m, MonadVm m, MonadIO m) => m ()
 createIRQChip = do
                   fd <- vmfd
                   execIO $ C.createIRQChip fd
-
-
--- | Create a memory region initialized from a file
--- createMemRegionFile :: (MonadError m, MonadVm m, MonadIO m, MonadRam m) => 
---                       FilePath -- ^ Path to the file
---                       -> Word64  -- ^ Address target in the guest Vm
---                       -> m (Ptr Word8) -- ^ A 'Ptr' to where the memory region is mapped in the file
--- createMemRegionFile path guestAddr = let align i v = case v `mod` i of
---                                                        0 -> v
---                                                        n -> v + (i - n)
---                                      in do
---                                         fd <- execIO $ openFd path ReadOnly Nothing defaultFileFlags
---                                         size <- liftIO $ align 4096<$> fromIntegral<$> fileSize <$> getFileStatus path
---                                         ptr <- castPtr <$> mmap size
---                                         liftIO $ fdReadBuf fd ptr (fromIntegral size)
---                                         mapMemRegion (castPtr ptr) size guestAddr
---                                         return $ ptr
-
--- | Create an uninitialized memory region
--- createMemRegion :: (MonadError m, MonadVm m, MonadIO m, MonadRam m) => 
---                    Int -- ^ The size of the memory region
---                    -> Word64 -- ^ Address target in the guest Vm
---                    -> m (Ptr Word8) -- ^ A 'Ptr' to where the memory region is mapped in the file
--- createMemRegion size guestAddr = do
---                                     ptr <- mmap size
---                                     mapMemRegion ptr size guestAddr
---                                     return $ castPtr ptr
 
 vmfd :: (MonadVm m) => m C.VmFd
 vmfd = I.gets' _fd

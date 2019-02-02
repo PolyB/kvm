@@ -32,6 +32,8 @@ library:
     - lens
     - mtl
     - transformers
+    - ansi-terminal
+    - disassembler
 
 executables:
   kvm-exe:

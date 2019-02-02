@@ -15,6 +15,7 @@ import Prelude hiding (fail)
 import Control.Monad (when)
 import System.IO
 import System.Linux.Kvm.IoCtl.Types.KvmRun
+import System.Linux.Kvm.IoCtl.Types.KvmGuestDebug
 
 #include <linux/kvm.h>
 #include <sys/mman.h>
@@ -105,6 +106,12 @@ createIRQChip :: VmFd -> IO ()
 createIRQChip (VmFd fd) = do
                               r <- c_ioctl'' fd (#const KVM_CREATE_IRQCHIP) 0
                               when (r == -1) $ fail "kvm:ioctl:create IRQ chip returned an error"
+
+setGuestDebug :: VcpuFd -> KvmGuestDebug -> IO ()
+setGuestDebug (VcpuFd fd) kgd = do
+                                    r <- with kgd $ c_ioctl' fd (#const KVM_SET_GUEST_DEBUG)
+                                    when (r == -1) $ fail "kvm:ioctl:setGuestDebug failed"
+
 
 -- Mmap memory with fixed length
 mmap :: Int -> IO (Ptr ())

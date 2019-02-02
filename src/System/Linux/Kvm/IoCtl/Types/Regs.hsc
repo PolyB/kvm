@@ -3,7 +3,7 @@
 module System.Linux.Kvm.IoCtl.Types.Regs
 (
   -- * Data
-  Regs
+  Regs(..)
  ,emptyRegs
   -- * Accessors
  ,rax 

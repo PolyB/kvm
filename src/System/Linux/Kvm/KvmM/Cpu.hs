@@ -15,6 +15,8 @@ module System.Linux.Kvm.KvmM.Cpu
    ,cpuContinue
    ,cpuContinueUntilVmEnd
    ,MonadCpu
+   -- * Cpu Actions
+   ,setDebug
    -- * Cpu Properties
    ,getExitReason
    ,regs
@@ -29,9 +31,9 @@ import System.Linux.Kvm.IoCtl
 import System.Linux.Kvm.IoCtl.Types
 import System.Linux.Kvm.IoCtl.Types.Regs
 import System.Linux.Kvm.IoCtl.Types.SRegs
-import Data.Void
 import System.Linux.Kvm.IoCtl.Types.KvmRun
 import Foreign.Ptr
+import System.Linux.Kvm.IoCtl.Types.KvmGuestDebug
 import System.Linux.Kvm.KvmM.Kvm
 import Control.Monad.IO.Class
 import qualified Ether.State as I
@@ -96,6 +98,12 @@ runCpuT act = do
                ,_sregs_before =  newsregs
                ,_kvm_run = kvmrunptr
               }
+
+setDebug :: (MonadCpu m, MonadIO m, MonadError m) => KvmGuestDebug -> m ()
+setDebug flags = do
+                    fd <- I.gets' _cpufd
+                    execIO $ setGuestDebug fd flags
+
 -- | Returns the exit reasons of the CPU
 getExitReason:: (MonadCpu m, MonadIO m) => m (KvmRunExit, KvmRunBase)
 getExitReason = do
