@@ -137,3 +137,13 @@ freeKvmRun kvm kvmrun = do
                           size <- getVcpuMmapSize kvm
                           c_munmap (castPtr kvmrun) size
                           return ()
+
+kvmTranslate :: VcpuFd -> Word64 -> IO Word64
+kvmTranslate (VcpuFd fd) address = do
+                                    allocaBytes (#size struct kvm_translation) $ \ptr -> do
+                                                                                    (#poke struct kvm_translation, linear_address) ptr address
+                                                                                    r <- c_ioctl' fd (#const KVM_TRANSLATE) ptr 
+                                                                                    when (r == -1) $ fail "kvm:ioctl:translate returned an error"
+                                                                                    (#peek struct kvm_translation, physical_address) ptr
+
+

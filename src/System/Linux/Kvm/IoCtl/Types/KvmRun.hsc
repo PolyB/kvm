@@ -56,6 +56,7 @@ data KvmRunExit
   | KvmRunExitIoApicEoi IoapicEoi
   | KvmRunExitHyperv Hyperv
   | KvmRunExitHlt
+  | KvmRunExitShutdown
   | KvmRunExitNotImplemented Word32
   deriving (Show, Eq)
 
@@ -73,6 +74,7 @@ peekKvmRunExit (#const KVM_EXIT_EXCEPTION)      = fmap KvmRunExitException . pee
 peekKvmRunExit (#const KVM_EXIT_IO)             = fmap KvmRunExitIo .  peekKvmRunExitIo
 peekKvmRunExit (#const KVM_EXIT_DEBUG)          = fmap KvmRunExitDebug . peekKvmRunExitDebug
 peekKvmRunExit (#const KVM_EXIT_MMIO)           = fmap KvmRunExitMmio . peekKvmRunExitMmio
+peekKvmRunExit (#const KVM_EXIT_SHUTDOWN)       = const $ return KvmRunExitShutdown
 peekKvmRunExit (#const KVM_EXIT_HYPERCALL)      = fmap KvmRunExitHypercall . peekKvmRunExitHypercall
 peekKvmRunExit (#const KVM_EXIT_TPR_ACCESS)     = fmap KvmRunExitTprAccess . peekKvmRunExitTprAccess
 -- peekKvmRunExit (#const KVM_EXIT_S390_SIEIC)     = fmap KvmRunExitS390Sieic . peekKvmRunExitS390Sieic

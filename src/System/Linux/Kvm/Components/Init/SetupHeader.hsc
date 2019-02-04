@@ -52,6 +52,7 @@ data SetupHeader = SetupHeader {
     ,init_size :: Word32 
     ,handover_offset :: Word32 
 }
+    deriving (Show)
 
 peekSetupHeader :: Ptr SetupHeader -> IO SetupHeader
 peekSetupHeader ptr = SetupHeader   <$> (#peek struct setup_header, setup_sects) ptr
@@ -135,6 +136,9 @@ pokeSetupHeader ptr s = (#poke struct setup_header, setup_sects) ptr (setup_sect
 
 bootParamsSize :: Int
 bootParamsSize = (#size struct boot_params)
+
+setupHeaderSize:: Int
+setupHeaderSize = (#size struct setup_header)
 
 getSetupHeader :: Ptr BootParams -> Ptr SetupHeader
 getSetupHeader = (#ptr struct boot_params, hdr)

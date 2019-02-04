@@ -54,12 +54,11 @@ bootProtocolRequired :: Word16
 bootProtocolRequired = 0x206
 
 bzDefaultSects = 4
-bzKernelStart =  0x100000
+bzKernelStart =  0x100000 :: Word64
 
-bootLoaderSector = 0x1000
-bootLoaderIp = 0
-bootLoaderSp = 0x8000
 
+bootParamsStart :: Word64
+bootParamsStart = bzKernelStart - fromIntegral setupHeaderSize
 
 readAllFile:: (MonadIO m, MonadError m) => Fd -> Ptr () -> m ()
 readAllFile fd ptr = do
@@ -67,53 +66,59 @@ readAllFile fd ptr = do
                         when (nr /= 0) $ readAllFile fd (plusPtr ptr (fromIntegral nr))
 
 loadBzImage :: (MonadRam m, MonadIO m, MonadError m, MonadVm m, MonadInit m) => m ()
-loadBzImage = (`I.evalStateT'`emptySetupHeader)$ do 
-                -- get setupHeader
+loadBzImage = do
                 kernelPath <- I.gets' kernel
                 kernFd <- execIO $ openFd kernelPath ReadOnly Nothing defaultFileFlags
                 setupHeader <- execIO $ readSetupHeader kernFd
-                I.put' setupHeader
-                -- check setupHeader
-                when (header setupHeader /= setupHeaderMagic) $ I.throw' ErrorBadKernelFile
-                when (version setupHeader < bootProtocolRequired) $ I.throw' ErrorKernelTooOld
-                -- copy setup.bin
-                let kernSetupSects = if (setup_sects setupHeader /= 0) then (setup_sects setupHeader) else bzDefaultSects
-                let setupBinSize = 512 * (fromIntegral kernSetupSects)
-                setupBinPos <- realToHost bootLoaderSector 0
-                _ <- execIO $ fdSeek kernFd AbsoluteSeek 0
-                bytesRead <- execIO $ fdReadBuf kernFd (castPtr setupBinPos) (setupBinSize)
-                when (bytesRead /= setupBinSize) $ I.throw' ErrorBadKernelFile
-                liftIO $ dumpMem (castPtr setupBinPos) 20
-                -- copy vmlinux.bin
-                vmlinuxBinPtr <- flatToHost bzKernelStart
-                readAllFile kernFd vmlinuxBinPtr
-                -- copy cmdline
-                -- TODO
+                liftIO $ print setupHeader
+                setupHeader <- (`I.execStateT'`setupHeader)$ do 
+                    -- get setupHeader
+                    I.put' setupHeader
+                    -- check setupHeader
+                    when (header setupHeader /= setupHeaderMagic) $ I.throw' ErrorBadKernelFile
+                    when (version setupHeader < bootProtocolRequired) $ I.throw' ErrorKernelTooOld
+                    -- copy setup.bin
+                    let kernSetupSects = if (setup_sects setupHeader /= 0) then (setup_sects setupHeader) else bzDefaultSects
+                    let setupBinSize = 512 * (1 + fromIntegral kernSetupSects)
+                    -- _ <- execIO $ fdSeek kernFd AbsoluteSeek 0
+                    -- bytesRead <- execIO $ fdReadBuf kernFd (castPtr setupBinPos) (setupBinSize)
+                    -- when (bytesRead /= setupBinSize) $ I.throw' ErrorBadKernelFile
 
-                I.modify' (\x -> x { type_of_loader=0xff, heap_end_ptr=0xfe00, loadflags=(loadflags x .|. loadFlagsCanUseHeap)})
+                    -- copy vmlinux.bin
+                    _ <- execIO $ fdSeek kernFd AbsoluteSeek (fromIntegral setupBinSize)
+                    vmlinuxBinPtr <- flatToHost bzKernelStart
+                    readAllFile kernFd vmlinuxBinPtr
+                    -- copy cmdline
+                    -- TODO
 
-                -- copy initrd
-                -- TODO
-                I.get' >>= (\x -> execIO $ pokeSetupHeader (getSetupHeader (castPtr setupBinPos)) x)
+                    I.modify' (\x -> x { type_of_loader=0xff, heap_end_ptr=0xfe00, loadflags=(loadflags x .|. loadFlagsCanUseHeap .|. loadFlagsKeepSegments)})
+
+                    -- copy initrd
+                    -- TODO
+                bootParamsPtr <- flatToHost bootParamsStart
+                execIO $ pokeSetupHeader (getSetupHeader (castPtr bootParamsPtr)) setupHeader
 
 setupRegs:: Regs -> Regs
 setupRegs x = x { _rflags = 0x2
-                , _rip = bootLoaderIp + 0x200
-                , _rsp = bootLoaderSp
-                , _rbp = bootLoaderSp
+                , _rip = bzKernelStart
+                , _rsp = 0
+                , _rbp = 0
+                , _rdi = 0
+                , _rbx = 0
+                , _rsi = bootParamsStart
                 }
 
 
 setupSRegs:: SRegs -> SRegs
 setupSRegs x = let selToBase s = 16 * (fromIntegral s)
-                   segment seg = seg { _base = selToBase bootLoaderSector, _selector = bootLoaderSector }
-                in x { _cs = segment (x^.cs) 
-                     , _ss = segment (x^.ss)
-                     , _ds = segment (x^.ds)
-                     , _es = segment (x^.es)
+                   segment seg = seg { _base = 0, _limit = 0xffffffff, _g = 1, _present = 1 }
+                in x { _cs = segment (x^.cs) { _db = 1, _selector = 0x10, _stype = segToWord segExecuteRead }
+                     , _ss = segment (x^.ss) { _db = 1, _selector = 0x18, _stype = segToWord segReadWrite }
+                     , _ds = segment (x^.ds) { _selector = 0x18, _stype = segToWord segReadWrite }
+                     , _es = segment (x^.es) { _selector = 0x18, _stype = segToWord segReadWrite }
                      , _fs = segment (x^.fs)
                      , _gs = segment (x^.gs)
-                     , _cr0 = clearBit (x^.cr0) 0
+                     , _cr0 = setBit (x^.cr0) 0
                      }
 initCpuRegs::MonadCpu m => m ()
 initCpuRegs = I.tagAttach @Cpu $ do

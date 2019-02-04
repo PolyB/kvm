@@ -7,6 +7,7 @@ import Foreign
 import Foreign.Ptr
 import Foreign.C
 import Control.Lens
+import Data.Word
 
 #include <linux/kvm.h>
 
@@ -19,6 +20,20 @@ data Segment = Segment {
 }
   deriving (Eq, Show)
 makeLenses ''Segment
+
+data SegType = SegType { segToWord :: Word8 }
+
+instance Semigroup SegType where
+ (SegType a) <> (SegType b) = SegType $ a .|. b
+
+segReadOnly = SegType 0x0
+segAccessed = SegType 0x1
+segReadWrite = SegType 0x2
+segExpendDown = SegType 0x4
+
+segExecuteOnly = SegType 0x8
+segExecuteRead = SegType 0xA
+segConforming = SegType 0x4
 
 emptySegment :: Segment
 emptySegment = Segment 0 0 0 0 0 0 0 0 0 0 0

@@ -18,7 +18,7 @@ import Data.Bits
 import Text.Disassembler.X86Disassembler
 import Data.Word
 import Foreign.Ptr
-
+import System.Linux.Kvm.Components.Ram
 
 
 debugHeader:: String -> IO ()
@@ -32,7 +32,7 @@ dumpText n v = let
                     maxNameLen = maximum (length.fst <$> v)
                     maxValLen = maximum (length.snd <$> v)
                     maxlength = maxNameLen + maxValLen + 3
-                    varPerLines = 80 `div` maxlength
+                    varPerLines = 120 `div` maxlength
                     align (var,val) = (var ++ replicate (maxNameLen - length var ) ' ', val ++ replicate (maxValLen - length val) ' ')
                     printvar (var, val) = var ++ " : " ++ setSGRCode [SetColor Foreground Vivid Blue] ++ val ++ setSGRCode []
                     printLine vars = putStrLn $ intercalate "  " (printvar <$> vars)
@@ -47,7 +47,7 @@ dumpVars n v = let
                     maxNameLen = maximum (length.fst <$> v)
                     valLen = (finiteBitSize (snd$ v!!0)`div`8)
                     maxlength = maxNameLen + valLen + 6
-                    varPerLines = 80 `div` maxlength
+                    varPerLines = 120 `div` maxlength
                     align (var,val) = (var ++ replicate (maxNameLen - length var ) ' ', replicate (valLen - length val) '0' ++ val)
                     printvar (var, val) = var ++ " : " ++ setSGRCode [SetColor Foreground Vivid Blue] ++ "0x" ++ val ++ setSGRCode []
                     printLine vars = putStrLn $ intercalate "  " (printvar <$> vars)
@@ -81,7 +81,7 @@ dumpRegs = do
             
 dumpSRegs :: (MonadIO m, MonadCpu m) => m ()
 dumpSRegs = do
-             let showSeg (Segment base limit selector stype present dpl db s l g avl) = "{base: 0x" ++ showHex base ", limit: 0x" ++ showHex limit ", selector : 0x" ++ showHex selector "}"
+             let showSeg (Segment base limit selector stype present dpl db s l g avl) = "{base: 0x" ++ showHex base ", limit: 0x" ++ showHex limit ", selector : 0x" ++ showHex selector ", present :" ++ (if present /= 0 then "Y" else "N") ++ ", stype : 0x" ++ showHex stype "}"
              r <- I.tagAttach @Cpu $ use sregs
              liftIO $ dumpVars "System Regs" [("cr0", r^.cr0)
                                ,("cr2", r^.cr2)
@@ -98,10 +98,19 @@ dumpSRegs = do
 printInstrs :: [Instruction] -> IO ()
 printInstrs instrs = forM_ instrs $ putStrLn.showAtt
 
-dumpInstrs :: Ptr Word8 -> Int -> IO ()
-dumpInstrs ptr l = do 
-                    r <- disassembleBlock ptr l
-                    either (\err -> putStrLn $ "ParseError" ++ show err) printInstrs r
+dumpInstrs :: Ptr Word8 -> Word64 -> Int -> IO ()
+dumpInstrs ptr showAddr l = do 
+                    r <- disassembleBlockWithConfig (defaultConfig { confStartAddr = fromIntegral showAddr }) ptr l
+                    either (\_ -> dumpInstrs ptr showAddr (l - 1)) printInstrs r
+
+dumpAtIp :: (MonadCpu m, MonadRam m, MonadIO m) => m ()
+dumpAtIp = do
+            liftIO $ debugHeader "Intruction dump at IP"
+            regs <- I.tagAttach @Cpu $ use regs
+            let ip = regs^.rip
+            addr <- castPtr <$> translateToHost ip
+            liftIO $ dumpInstrs addr ip 22
+
 
 dumpMem :: Ptr Word8 -> Int -> IO ()
 dumpMem ptr c = do  bytes <- peekArray c ptr
@@ -109,5 +118,5 @@ dumpMem ptr c = do  bytes <- peekArray c ptr
 
 
 
-dumpAll :: (MonadIO m, MonadCpu m) => m ()
-dumpAll = dumpRegs >> dumpSRegs
+dumpAll :: (MonadIO m, MonadCpu m, MonadRam m) => m ()
+dumpAll = dumpRegs >> dumpSRegs >> dumpAtIp

@@ -2,7 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeApplications #-}
-module System.Linux.Kvm.Components.Ram (Ram, RamT, ConfigRamT, runConfigRam, runRam, MonadRam, flatToHost, realToHost) where
+module System.Linux.Kvm.Components.Ram (Ram, RamT, ConfigRamT, runConfigRam, runRam, MonadRam, flatToHost, realToHost, translateToHost) where
 
 import qualified Ether.Reader as I
 import qualified Ether.State as I
@@ -27,7 +27,6 @@ data Ram = Ram
             }
 makeLenses ''Ram
 
-
 type ConfigRamT m = I.ReaderT' ConfigRam m
 type RamT m = I.StateT' Ram m
 
@@ -36,7 +35,7 @@ type MonadConfigRam m = I.MonadReader' ConfigRam m
 
 runConfigRam:: Monad m => Maybe Int -> ConfigRamT m a -> m a
 runConfigRam val m = do
-                    let defaultRam = 4 * 1024 * 1024
+                    let defaultRam = 256 * 1024 * 1024-- 1 * 1024 * 1024 * 1024
                     I.runReaderT' m $ ConfigRam { maxRam=fromMaybe defaultRam val }
 
 
@@ -66,3 +65,9 @@ mapMemRegion host size guest = do
                                     I.tagAttach @Ram $ userSpaceMemRegions %= (newslot:)
                                     fd <- vmfd
                                     execIO $ C.setUserMemoryRegion fd newslot
+
+translateToHost :: (MonadRam m, MonadCpu m, MonadIO m) => Word64 -> m (Ptr ())
+translateToHost addr = do
+                         flat <- translateAddr addr
+                         flatToHost flat
+                    

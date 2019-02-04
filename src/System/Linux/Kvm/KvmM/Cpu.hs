@@ -17,6 +17,7 @@ module System.Linux.Kvm.KvmM.Cpu
    ,MonadCpu
    -- * Cpu Actions
    ,setDebug
+   ,translateAddr
    -- * Cpu Properties
    ,getExitReason
    ,regs
@@ -39,6 +40,7 @@ import Control.Monad.IO.Class
 import qualified Ether.State as I
 import qualified Ether.TagDispatch as I
 import Control.Monad
+import Data.Word
 
 
 data Cpu = Cpu
@@ -66,6 +68,7 @@ cpuContinue = do
                   osregs <- I.gets' _sregs_before
                   when (cregs /= oregs) $ liftIO $ setRegs fd cregs
                   when (csregs /= osregs) $ liftIO $ setSRegs fd csregs
+                  setDebug (guestDbgEnable <> guestDbgSinglestep) -- TODO : remove
                   execIO $ runKvm fd
                   newregs <- liftIO $ getRegs fd
                   newsregs <- liftIO $ getSRegs fd
@@ -110,3 +113,12 @@ getExitReason = do
                   kvmrunptr <- I.gets' _kvm_run
                   (KvmRun base exit) <- liftIO $ peekKvmRun kvmrunptr
                   return (exit, base)
+
+translateAddr :: (MonadCpu m, MonadIO m) => Word64 -> m Word64
+translateAddr addr = do
+                        fd <- I.gets' _cpufd
+                        liftIO $ kvmTranslate fd addr
+
+    
+                        
+

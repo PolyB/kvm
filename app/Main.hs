@@ -20,17 +20,16 @@ vmSetup :: (MonadIO m, MonadRam m, MonadError m, MonadVm m) => m ()
 vmSetup = do
               setTss 0xffffd000
               setIdentityMap 0xffffc000
-              createIRQChip
+              -- createIRQChip
               liftIO $ putStrLn "setup"
 cpuSetup :: (MonadIO m, MonadCpu m, MonadError m) => m ()
 cpuSetup = do
-            setDebug (guestDbgEnable <> guestDbgSinglestep)
-            
+            return ()
 
 vmHandle :: (MonadIO m, MonadVm m, MonadCpu m) => KvmRunExit -> KvmRunT m ()
-vmHandle (KvmRunExitIo io) = case (io^.port, io^.direction) of 
-                                    (1016, IoDirectionOut) -> liftIO $ B.putStr $ B.pack (elems (io^.iodata))
-                                    _ -> liftIO $ print io
+-- vmHandle (KvmRunExitIo io) = case (io^.port, io^.direction) of 
+--                                     (1016, IoDirectionOut) -> liftIO $ B.putStr $ B.pack (elems (io^.iodata))
+--                                     _ -> liftIO $ print io
 vmHandle (KvmRunExitDebug _) = liftIO $ putStrLn "Debug exit"
 vmHandle a = do
                 liftIO $ putStrLn "got unhandled exit :" >> print a
@@ -39,6 +38,7 @@ vmHandle a = do
 vmStop :: (MonadIO m) => m ()
 vmStop = do
           liftIO $ putStrLn "stop"
+
 
 sep = liftIO $ replicateM_ 2 $ putStrLn "------------------------------------"
 
