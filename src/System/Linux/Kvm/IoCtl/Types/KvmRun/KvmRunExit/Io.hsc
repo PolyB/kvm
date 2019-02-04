@@ -13,32 +13,36 @@ import Data.Array.IArray
 
 #include <linux/kvm.h>
 
-data IoDirection = IoDirectionIn
-                 | IoDirectionOut
+data IoDirection = IoDirectionIn (Ptr Word8)
+                 | IoDirectionOut (Array Int Word8)
                  | IoDirectionUnknown
   deriving (Show, Eq)
 
 
-data Io = Io { _direction :: IoDirection, _port :: Word16, _count :: Word32, _iodata :: Array Int Word8 }
+data Io = Io { _direction :: IoDirection, _port :: Word16, _count :: Word32 }
   deriving (Show, Eq)
 
 makeLenses ''Io
 
-mkDirection :: Word8 -> IoDirection
-mkDirection (#const KVM_EXIT_IO_IN) = IoDirectionIn
-mkDirection (#const KVM_EXIT_IO_OUT) = IoDirectionOut
-mkDirection _ = IoDirectionUnknown
+mkDirection :: Word8 -> Ptr a -> IO IoDirection
+mkDirection (#const KVM_EXIT_IO_IN) ptr = IoDirectionIn <$> mkDataPtr ptr
+mkDirection (#const KVM_EXIT_IO_OUT) ptr = IoDirectionOut <$> mkData ptr
+mkDirection _ _ = return IoDirectionUnknown
 
-mkData :: Ptr Word8 -> IO (Array Int Word8)
+mkDataPtr :: Ptr a -> IO (Ptr Word8)
+mkDataPtr ptr = do
+                    (offset :: Word64) <- (#peek struct kvm_run, io.data_offset) ptr
+                    return $ plusPtr ptr (fromIntegral offset)
+
+mkData :: Ptr a -> IO (Array Int Word8)
 mkData ptr = do
               (size :: Word8) <- (#peek struct kvm_run, io.size) ptr
-              (offset :: Word64) <- (#peek struct kvm_run, io.data_offset) ptr
-              let dataptr = plusPtr ptr (fromIntegral offset)
+              dataptr <- mkDataPtr ptr
               mkArray (fromIntegral size) dataptr
 
 
 peekKvmRunExitIo :: Ptr a -> IO Io
-peekKvmRunExitIo ptr = Io <$> ((#peek struct kvm_run, io.direction) ptr >>= (return.mkDirection))
-                                 <*> (#peek struct kvm_run, io.port) ptr
-                                 <*> (#peek struct kvm_run, io.count) ptr
-                                 <*> mkData (castPtr ptr)
+peekKvmRunExitIo ptr = do dir <- (#peek struct kvm_run, io.direction) ptr
+                          Io <$> mkDirection dir ptr
+                             <*> (#peek struct kvm_run, io.port) ptr
+                             <*> (#peek struct kvm_run, io.count) ptr

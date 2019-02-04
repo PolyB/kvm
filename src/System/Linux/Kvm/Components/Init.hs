@@ -20,7 +20,9 @@ import Control.Lens
 import System.Posix.Types
 import System.Posix.IO
 import Foreign.Marshal.Alloc
+import Foreign.Marshal.Utils
 import Foreign.Ptr
+import Foreign.C.String
 import Control.Monad
 import GHC.IO.Device
 import Data.Word
@@ -70,10 +72,7 @@ loadBzImage = do
                 kernelPath <- I.gets' kernel
                 kernFd <- execIO $ openFd kernelPath ReadOnly Nothing defaultFileFlags
                 setupHeader <- execIO $ readSetupHeader kernFd
-                liftIO $ print setupHeader
                 setupHeader <- (`I.execStateT'`setupHeader)$ do 
-                    -- get setupHeader
-                    I.put' setupHeader
                     -- check setupHeader
                     when (header setupHeader /= setupHeaderMagic) $ I.throw' ErrorBadKernelFile
                     when (version setupHeader < bootProtocolRequired) $ I.throw' ErrorKernelTooOld
@@ -89,9 +88,12 @@ loadBzImage = do
                     vmlinuxBinPtr <- flatToHost bzKernelStart
                     readAllFile kernFd vmlinuxBinPtr
                     -- copy cmdline
-                    -- TODO
+                    cmdlineV <- I.gets' cmdline
+                    let cmdlineAddr = bootParamsStart - fromIntegral (length cmdlineV + 1)
+                    cmdlinePtr <- flatToHost cmdlineAddr
+                    liftIO $ withCAStringLen cmdlineV $ \(cstr, len) -> copyBytes (castPtr cmdlinePtr) cstr len
 
-                    I.modify' (\x -> x { type_of_loader=0xff, heap_end_ptr=0xfe00, loadflags=(loadflags x .|. loadFlagsCanUseHeap .|. loadFlagsKeepSegments)})
+                    I.modify' (\x -> x { type_of_loader=0xff, heap_end_ptr=0xfe00, loadflags=(loadflags x .|. loadFlagsCanUseHeap .|. loadFlagsKeepSegments), cmd_line_ptr=(fromIntegral cmdlineAddr)})
 
                     -- copy initrd
                     -- TODO

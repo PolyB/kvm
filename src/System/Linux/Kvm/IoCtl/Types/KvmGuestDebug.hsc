@@ -11,6 +11,7 @@ import Data.Word
 #include <linux/kvm.h>
 
 data KvmGuestDebug = KvmGuestDebug Word32
+    deriving (Eq, Show)
 
 instance Semigroup KvmGuestDebug where
  (KvmGuestDebug a) <> (KvmGuestDebug b) = KvmGuestDebug (a .|. b)

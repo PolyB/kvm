@@ -16,12 +16,12 @@ module System.Linux.Kvm.KvmM.Cpu
    ,cpuContinueUntilVmEnd
    ,MonadCpu
    -- * Cpu Actions
-   ,setDebug
    ,translateAddr
    -- * Cpu Properties
    ,getExitReason
    ,regs
    ,sregs
+   ,guest_debug
   ) 
 where
 
@@ -51,6 +51,8 @@ data Cpu = Cpu
    ,_regs_before :: Regs
    ,_sregs_before :: SRegs
    ,_kvm_run :: Ptr KvmRun
+   ,_guest_debug :: KvmGuestDebug
+   ,_guest_debug_before :: KvmGuestDebug
   }
 makeLenses ''Cpu
 
@@ -64,11 +66,13 @@ cpuContinue = do
                   fd <- I.gets' _cpufd
                   cregs <- I.gets' _regs
                   csregs <- I.gets' _sregs
+                  debug <- I.gets' _guest_debug
                   oregs <- I.gets' _regs_before
                   osregs <- I.gets' _sregs_before
+                  odebug <- I.gets' _guest_debug_before
                   when (cregs /= oregs) $ liftIO $ setRegs fd cregs
                   when (csregs /= osregs) $ liftIO $ setSRegs fd csregs
-                  setDebug (guestDbgEnable <> guestDbgSinglestep) -- TODO : remove
+                  when (debug /= odebug) $ liftIO $ setGuestDebug fd debug
                   execIO $ runKvm fd
                   newregs <- liftIO $ getRegs fd
                   newsregs <- liftIO $ getSRegs fd
@@ -100,12 +104,9 @@ runCpuT act = do
                ,_sregs =  newsregs
                ,_sregs_before =  newsregs
                ,_kvm_run = kvmrunptr
+               ,_guest_debug_before = mempty
+               ,_guest_debug = mempty
               }
-
-setDebug :: (MonadCpu m, MonadIO m, MonadError m) => KvmGuestDebug -> m ()
-setDebug flags = do
-                    fd <- I.gets' _cpufd
-                    execIO $ setGuestDebug fd flags
 
 -- | Returns the exit reasons of the CPU
 getExitReason:: (MonadCpu m, MonadIO m) => m (KvmRunExit, KvmRunBase)

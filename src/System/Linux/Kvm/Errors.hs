@@ -18,6 +18,7 @@ data Error = ErrorIO IOException
            | ErrorTooMuchRamUsed
            | ErrorBadKernelFile
            | ErrorKernelTooOld
+           | ErrorBadIoInHandler
            deriving (Show)
 
 
