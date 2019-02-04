@@ -33,38 +33,22 @@ cpuSetup = do
             --I.tagAttach @Cpu $ guest_debug .= (guestDbgEnable <> guestDbgUseSwBp)
             return ()
 
-serialHandler :: MonadIO m => ExitHandler m
+serialHandler :: (MonadIO m, MonadCpu m, MonadRam m)=> ExitHandler m
 serialHandler = mconcat [ handleIOin'' 0x3fd $ return 0x20
                         --,handleIOin'' 0x3fb $ return 0x20
+                        , handleIOout 0x3f8 $ (\x -> liftIO $ B.putStr $ B.pack (elems x))
                         ]
 
 
 vmHandle :: (MonadIO m, MonadVm m, MonadCpu m, MonadRam m) => KvmRunExit -> KvmRunT m ()
 vmHandle = doHandle $ mconcat [serialHandler
+                              ,handleHlt $ stopVm
                               ,defaultHandle $ \x-> liftIO $  print x
                               ]
 
--- vmHandle (KvmRunExitIo io) = case (io^.port, io^.direction) of 
---                                     (0x3f8, IoDirectionOut) -> liftIO $ B.putStr $ B.pack (elems (io^.iodata))
---                                     (a, IoDirectionOut) | a > 0x3f8 && a < 0x3f8 + 6 -> return ()
---                                     _ -> liftIO $ print io
--- vmHandle (KvmRunExitDebug _) = do
---                                 regs <- I.tagAttach @Cpu $ use regs
---                                 let ip = regs^.rip
---                                 addr <- castPtr <$> translateToHost ip
---                                 instr <- liftIO $ peek addr
---                                 when (instr == (0xcc :: Word8)) $ do
---                                                                     liftIO $ poke addr (0xfc::Word8)
---                                                                     I.tagAttach @Cpu $ guest_debug .= (guestDbgEnable <> guestDbgSinglestep)
--- 
--- 
--- vmHandle a = do
---                 liftIO $ putStrLn "got unhandled exit :" >> print a
---                 stopVm
--- 
 vmStop :: (MonadIO m) => m ()
 vmStop = do
-          liftIO $ putStrLn "stop"
+          return ()
 
 
 main :: IO ()

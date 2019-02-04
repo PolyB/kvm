@@ -39,7 +39,7 @@ handleIOin' ioportC handle = ExitHandler $ \h -> case h of
 handleIOin'' :: (Monad m, MonadIO m) => Word16 -> KvmRunT m Word8 -> ExitHandler m
 -- handleIOin'' ioport handle = handleIOin ioport (\s -> replicateM (fromIntegral s) handle)
 handleIOin'' ioport handle = ExitHandler $ \h -> case h of
-                                                    (KvmRunExitIo (Io (IoDirectionIn ptr) port size)) | ioport == port -> replicateM (fromIntegral size) handle >> return True
+                                                    (KvmRunExitIo (Io (IoDirectionIn ptr) port size)) | ioport == port -> replicateM (fromIntegral size) handle >>= (\arr -> liftIO $ pokeArray ptr arr >> return True)
                                                     _ -> return False
 
 handleIOout'' :: (Monad m, MonadIO m) => Word16 -> (Word8 -> KvmRunT m ()) -> ExitHandler m

@@ -18,3 +18,9 @@ doHandle (ExitHandler handler) exit = handler exit >> return ()
 
 mkHandler:: Monad m => (KvmRunExit -> Bool) -> KvmRunT m () -> ExitHandler m
 mkHandler test handler = ExitHandler $ \exit -> if (test exit) then handler >> return True else return False
+
+handleHlt :: Monad m => KvmRunT m () -> ExitHandler m
+handleHlt = mkHandler (==KvmRunExitHlt) 
+
+handleShutDown :: Monad m => KvmRunT m () -> ExitHandler m
+handleShutDown = mkHandler (==KvmRunExitShutdown) 
