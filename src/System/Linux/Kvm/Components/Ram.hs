@@ -2,7 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeApplications #-}
-module System.Linux.Kvm.Components.Ram (Ram, RamT, ConfigRamT, runConfigRam, runRam, MonadRam, flatToHost, realToHost, translateToHost) where
+module System.Linux.Kvm.Components.Ram (Ram, RamT, ConfigRamT, runConfigRam, runRam, MonadRam, MonadConfigRam, flatToHost, realToHost, translateToHost, maxRam) where
 
 import qualified Ether.Reader as I
 import qualified Ether.State as I
@@ -35,7 +35,7 @@ type MonadConfigRam m = I.MonadReader' ConfigRam m
 
 runConfigRam:: Monad m => Maybe Int -> ConfigRamT m a -> m a
 runConfigRam val m = do
-                    let defaultRam = 256 * 1024 * 1024-- 1 * 1024 * 1024 * 1024
+                    let defaultRam = 1 * 1024 * 1024 * 1024
                     I.runReaderT' m $ ConfigRam { maxRam=fromMaybe defaultRam val }
 
 

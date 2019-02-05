@@ -3,30 +3,31 @@
 {-# LANGUAGE FlexibleContexts #-}
 module System.Linux.Kvm.Components.Init (Init, InitT, MonadInit, runInit, loadBzImage, initCpuRegs) where
 
-import qualified Ether.State as I
-import qualified Ether.Except as I
-import qualified Ether.TagDispatch as I
-import System.Linux.Kvm.KvmM.Vm
-import System.Linux.Kvm.KvmM.Cpu
-import System.Linux.Kvm.Errors
-import System.Linux.Kvm.IoCtl.Types.Segment
-import System.Linux.Kvm.Components.Init.SetupHeader
-import System.Linux.Kvm.Debug
-import System.Linux.Kvm.IoCtl.Types.Regs
-import System.Linux.Kvm.IoCtl.Types.SRegs
-import System.Linux.Kvm.Components.Ram
-import Control.Monad.IO.Class
 import Control.Lens
-import System.Posix.Types
-import System.Posix.IO
+import Control.Monad
+import Control.Monad.IO.Class
+import Data.Bits
+import Data.Word
+import Foreign.C.String
 import Foreign.Marshal.Alloc
 import Foreign.Marshal.Utils
 import Foreign.Ptr
-import Foreign.C.String
-import Control.Monad
 import GHC.IO.Device
-import Data.Word
-import Data.Bits
+import System.Linux.Kvm.Components.Init.SetupHeader
+import System.Linux.Kvm.Components.Ram
+import System.Linux.Kvm.Debug
+import System.Linux.Kvm.Errors
+import System.Linux.Kvm.IoCtl.Types.Regs
+import System.Linux.Kvm.IoCtl.Types.SRegs
+import System.Linux.Kvm.IoCtl.Types.Segment
+import System.Linux.Kvm.KvmM.Cpu
+import System.Linux.Kvm.KvmM.Vm
+import System.Posix.IO
+import System.Posix.Types
+import qualified Ether.Except as I
+import qualified Ether.Reader as I
+import qualified Ether.State as I
+import qualified Ether.TagDispatch as I
 
 data Init = Init
     { 
@@ -60,14 +61,15 @@ bzKernelStart =  0x100000 :: Word64
 
 
 bootParamsStart :: Word64
-bootParamsStart = bzKernelStart - fromIntegral setupHeaderSize
+bootParamsStart = 0x20000
 
-readAllFile:: (MonadIO m, MonadError m) => Fd -> Ptr () -> m ()
-readAllFile fd ptr = do
-                        nr <- execIO $ fdReadBuf fd (castPtr ptr) 65536
-                        when (nr /= 0) $ readAllFile fd (plusPtr ptr (fromIntegral nr))
+readAllFile:: (MonadIO m, MonadError m) => Fd -> Ptr () -> Int -> m ()
+readAllFile fd ptr count = do
+                        when (count < 0) $ I.throw' ErrorTooMuchRamUsed
+                        nr <- execIO $ fromIntegral <$> fdReadBuf fd (castPtr ptr) (100 * 65536)
+                        when (nr /= 0) $ readAllFile fd (plusPtr ptr nr) (count - nr)
 
-loadBzImage :: (MonadRam m, MonadIO m, MonadError m, MonadVm m, MonadInit m) => m ()
+loadBzImage :: (MonadRam m, MonadConfigRam m, MonadIO m, MonadError m, MonadVm m, MonadInit m) => m ()
 loadBzImage = do
                 kernelPath <- I.gets' kernel
                 kernFd <- execIO $ openFd kernelPath ReadOnly Nothing defaultFileFlags
@@ -76,24 +78,22 @@ loadBzImage = do
                     -- check setupHeader
                     when (header setupHeader /= setupHeaderMagic) $ I.throw' ErrorBadKernelFile
                     when (version setupHeader < bootProtocolRequired) $ I.throw' ErrorKernelTooOld
-                    -- copy setup.bin
+
                     let kernSetupSects = if (setup_sects setupHeader /= 0) then (setup_sects setupHeader) else bzDefaultSects
                     let setupBinSize = 512 * (1 + fromIntegral kernSetupSects)
-                    -- _ <- execIO $ fdSeek kernFd AbsoluteSeek 0
-                    -- bytesRead <- execIO $ fdReadBuf kernFd (castPtr setupBinPos) (setupBinSize)
-                    -- when (bytesRead /= setupBinSize) $ I.throw' ErrorBadKernelFile
 
                     -- copy vmlinux.bin
                     _ <- execIO $ fdSeek kernFd AbsoluteSeek (fromIntegral setupBinSize)
                     vmlinuxBinPtr <- flatToHost bzKernelStart
-                    readAllFile kernFd vmlinuxBinPtr
+                    ramMax <- I.asks' maxRam
+                    readAllFile kernFd vmlinuxBinPtr (ramMax - fromIntegral bzKernelStart)
                     -- copy cmdline
                     cmdlineV <- I.gets' cmdline
                     let cmdlineAddr = bootParamsStart - fromIntegral (length cmdlineV + 1)
                     cmdlinePtr <- flatToHost cmdlineAddr
                     liftIO $ withCAStringLen cmdlineV $ \(cstr, len) -> copyBytes (castPtr cmdlinePtr) cstr len
 
-                    I.modify' (\x -> x { type_of_loader=0xff, heap_end_ptr=0xfe00, loadflags=(loadflags x .|. loadFlagsCanUseHeap .|. loadFlagsKeepSegments), cmd_line_ptr=(fromIntegral cmdlineAddr)})
+                    I.modify' (\x -> x { type_of_loader=0xff, heap_end_ptr=0xfe00, loadflags=(loadflags x .|. loadFlagsCanUseHeap .|. loadFlagsKeepSegments .|. loadFlagsLoadedHigh), cmd_line_ptr=(fromIntegral cmdlineAddr)})
 
                     -- copy initrd
                     -- TODO

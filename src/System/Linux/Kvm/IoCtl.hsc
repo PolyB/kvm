@@ -16,6 +16,7 @@ import Control.Monad (when)
 import System.IO
 import System.Linux.Kvm.IoCtl.Types.KvmRun
 import System.Linux.Kvm.IoCtl.Types.KvmGuestDebug
+import System.Linux.Kvm.IoCtl.Types.Cpuid2
 
 #include <linux/kvm.h>
 #include <sys/mman.h>
@@ -146,4 +147,11 @@ kvmTranslate (VcpuFd fd) address = do
                                                                                     when (r == -1) $ fail "kvm:ioctl:translate returned an error"
                                                                                     (#peek struct kvm_translation, physical_address) ptr
 
+kvmSetCpuid:: VcpuFd -> Cpuid2 -> IO ()
+kvmSetCpuid (VcpuFd fd) cpuid = do
+                                    allocaBytes (sizeOfCpuid cpuid) $ \ptr -> do
+                                                                                fillBytes ptr 0x0 (sizeOfCpuid cpuid) 
+                                                                                pokeCpuid ptr cpuid
+                                                                                r <- c_ioctl' fd (#const KVM_SET_CPUID2) ptr 
+                                                                                when (r == -1) $ fail "kvm:ioctl:set_cpuid returned an error"
 

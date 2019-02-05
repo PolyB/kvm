@@ -17,6 +17,7 @@ module System.Linux.Kvm.KvmM.Cpu
    ,MonadCpu
    -- * Cpu Actions
    ,translateAddr
+   ,setCpuid
    -- * Cpu Properties
    ,getExitReason
    ,regs
@@ -33,6 +34,7 @@ import System.Linux.Kvm.IoCtl.Types
 import System.Linux.Kvm.IoCtl.Types.Regs
 import System.Linux.Kvm.IoCtl.Types.SRegs
 import System.Linux.Kvm.IoCtl.Types.KvmRun
+import System.Linux.Kvm.IoCtl.Types.Cpuid2
 import Foreign.Ptr
 import System.Linux.Kvm.IoCtl.Types.KvmGuestDebug
 import System.Linux.Kvm.KvmM.Kvm
@@ -120,6 +122,7 @@ translateAddr addr = do
                         fd <- I.gets' _cpufd
                         liftIO $ kvmTranslate fd addr
 
-    
-                        
-
+setCpuid :: (MonadCpu m, MonadIO m, MonadError m) => Cpuid2 -> m ()
+setCpuid cpuid = do
+                    fd <- I.gets' _cpufd
+                    execIO $ kvmSetCpuid fd cpuid

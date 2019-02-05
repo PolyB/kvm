@@ -1,6 +1,7 @@
 module System.Linux.Kvm.ExitHandler where
 
 import System.Linux.Kvm.IoCtl.Types.KvmRun
+import Data.Word
 
 data ExitHandler m = ExitHandler (KvmRunExit -> KvmRunT m Bool)
 
@@ -24,3 +25,8 @@ handleHlt = mkHandler (==KvmRunExitHlt)
 
 handleShutDown :: Monad m => KvmRunT m () -> ExitHandler m
 handleShutDown = mkHandler (==KvmRunExitShutdown) 
+
+handleDebug:: Monad m => KvmRunT m () -> ExitHandler m
+handleDebug = mkHandler (\x -> case x of 
+                                (KvmRunExitDebug _) -> True
+                                _ -> False)
