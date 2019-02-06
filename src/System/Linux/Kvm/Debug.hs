@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 
-module System.Linux.Kvm.Debug where
+module System.Linux.Kvm.Debug (dumpRegs, dumpSRegs, dumpInstrs, dumpAtIp, dumpMem, dumpAll) where
 
 import System.Linux.Kvm.KvmM.Cpu 
 import Numeric
@@ -56,7 +56,7 @@ dumpVars n v = let
                 in do
                     debugHeader n
                     printVars (align.toString <$> v)
-
+-- | Dump cpu regsisters
 dumpRegs ::(MonadIO m, MonadCpu m) => m ()
 dumpRegs = do
             r <- I.tagAttach @Cpu $ use regs
@@ -78,7 +78,7 @@ dumpRegs = do
                                 ,("r15", r^.r15)
                                 ,("rip", r^.rip)
                                 ,("rflags", r^.rflags) ]
-            
+-- | Dump cpu system registers
 dumpSRegs :: (MonadIO m, MonadCpu m) => m ()
 dumpSRegs = do
              let showSeg (Segment base limit selector stype present dpl db s l g avl) = "{base: 0x" ++ showHex base ", limit: 0x" ++ showHex limit ", selector : 0x" ++ showHex selector ", present :" ++ (if present /= 0 then "Y" else "N") ++ ", stype : 0x" ++ showHex stype "}"
@@ -98,11 +98,16 @@ dumpSRegs = do
 printInstrs :: [Instruction] -> IO ()
 printInstrs instrs = forM_ instrs $ putStrLn.showAtt
 
-dumpInstrs :: Ptr Word8 -> Word64 -> Int -> IO ()
+-- | Dissasemble instructions at pointer
+dumpInstrs :: Ptr Word8  -- ^ Pointer to the start of memory region
+            -> Word64 -- ^ address of the pointer to the start of memory region (this will be printed in front of the instructions)
+            -> Int  -- ^ Number of bytes to dissasemble
+            -> IO ()
 dumpInstrs ptr showAddr l = do 
                     r <- disassembleBlockWithConfig (defaultConfig { confStartAddr = fromIntegral showAddr }) ptr l
                     either (\_ -> dumpInstrs ptr showAddr (l - 1)) printInstrs r
 
+-- | Dissasemble the next instructions from the cpu instruction pointer
 dumpAtIp :: (MonadCpu m, MonadRam m, MonadIO m) => m ()
 dumpAtIp = do
             liftIO $ debugHeader "Intruction dump at IP"
@@ -112,11 +117,15 @@ dumpAtIp = do
             liftIO $ dumpInstrs addr ip 22
 
 
-dumpMem :: Ptr Word8 -> Int -> IO ()
+-- | Dump the Bytes of a memory region
+dumpMem :: Ptr Word8 -- ^ Start of the memory region
+        -> Int  -- ^ Size of the memory region
+        -> IO ()
 dumpMem ptr c = do  bytes <- peekArray c ptr
                     putStrLn $  foldr (\w s -> " 0x" ++ showHex w s) ""  bytes
 
 
 
+-- | Dump the registers , system registers and next instructions
 dumpAll :: (MonadIO m, MonadCpu m, MonadRam m) => m ()
 dumpAll = dumpRegs >> dumpSRegs >> dumpAtIp

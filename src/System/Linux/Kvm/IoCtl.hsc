@@ -2,21 +2,21 @@
 
 module System.Linux.Kvm.IoCtl where
 
-import Foreign.C.Types
+import Control.Lens
+import Control.Monad (when)
+import Control.Monad.Fail (fail)
 import Foreign
-import Foreign.Ptr
 import Foreign.C
-import System.Posix
+import Foreign.C.Types
+import Foreign.Ptr
+import Prelude hiding (fail)
+import System.IO
 import System.Linux.Kvm.IoCtl.Exts as EXT
 import System.Linux.Kvm.IoCtl.Types
-import Control.Lens
-import Control.Monad.Fail (fail)
-import Prelude hiding (fail)
-import Control.Monad (when)
-import System.IO
-import System.Linux.Kvm.IoCtl.Types.KvmRun
-import System.Linux.Kvm.IoCtl.Types.KvmGuestDebug
 import System.Linux.Kvm.IoCtl.Types.Cpuid2
+import System.Linux.Kvm.IoCtl.Types.KvmGuestDebug
+import System.Linux.Kvm.IoCtl.Types.KvmRun
+import System.Posix
 
 #include <linux/kvm.h>
 #include <sys/mman.h>

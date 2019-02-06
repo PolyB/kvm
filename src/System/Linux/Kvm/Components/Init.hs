@@ -15,7 +15,6 @@ import Foreign.Ptr
 import GHC.IO.Device
 import System.Linux.Kvm.Components.Init.SetupHeader
 import System.Linux.Kvm.Components.Ram
-import System.Linux.Kvm.Debug
 import System.Linux.Kvm.Errors
 import System.Linux.Kvm.IoCtl.Types.Regs
 import System.Linux.Kvm.IoCtl.Types.SRegs
@@ -83,7 +82,7 @@ loadBzImage = do
                     let setupBinSize = 512 * (1 + fromIntegral kernSetupSects)
 
                     -- copy vmlinux.bin
-                    _ <- execIO $ fdSeek kernFd AbsoluteSeek (fromIntegral setupBinSize)
+                    _ <- execIO $ fdSeek kernFd AbsoluteSeek setupBinSize
                     vmlinuxBinPtr <- flatToHost bzKernelStart
                     ramMax <- I.asks' maxRam
                     readAllFile kernFd vmlinuxBinPtr (ramMax - fromIntegral bzKernelStart)
@@ -112,16 +111,14 @@ setupRegs x = x { _rflags = 0x2
 
 
 setupSRegs:: SRegs -> SRegs
-setupSRegs x = let selToBase s = 16 * (fromIntegral s)
-                   segment seg = seg { _base = 0, _limit = 0xffffffff, _g = 1, _present = 1 }
-                in x { _cs = segment (x^.cs) { _db = 1, _selector = 0x10, _stype = segToWord segExecuteRead }
-                     , _ss = segment (x^.ss) { _db = 1, _selector = 0x18, _stype = segToWord segReadWrite }
-                     , _ds = segment (x^.ds) { _selector = 0x18, _stype = segToWord segReadWrite }
-                     , _es = segment (x^.es) { _selector = 0x18, _stype = segToWord segReadWrite }
-                     , _fs = segment (x^.fs)
-                     , _gs = segment (x^.gs)
-                     , _cr0 = setBit (x^.cr0) 0
-                     }
+setupSRegs x = x { _cs = (x^.cs) { _base = 0, _limit = 0xffffffff, _g = 1, _present = 1, _db = 1, _selector = 0x10, _stype = segToWord segExecuteRead }
+                 , _ss = (x^.ss) { _base = 0, _limit = 0xffffffff, _g = 1, _present = 1, _db = 1, _selector = 0x18, _stype = segToWord segReadWrite }
+                 , _ds = (x^.ds) { _base = 0, _limit = 0xffffffff, _g = 1, _present = 1, _selector = 0x18, _stype = segToWord segReadWrite }
+                 , _es = (x^.es) { _base = 0, _limit = 0xffffffff, _g = 1, _present = 1, _selector = 0x18, _stype = segToWord segReadWrite }
+                 , _fs = (x^.fs) { _base = 0, _limit = 0xffffffff, _g = 1, _present = 1 }
+                 , _gs = (x^.gs) { _base = 0, _limit = 0xffffffff, _g = 1, _present = 1 }
+                 , _cr0 = setBit (x^.cr0) 0
+                }
 initCpuRegs::MonadCpu m => m ()
 initCpuRegs = I.tagAttach @Cpu $ do
                                     regs %= setupRegs

@@ -4,20 +4,19 @@
 {-# LANGUAGE TypeApplications #-}
 module System.Linux.Kvm.Components.Ram (Ram, RamT, ConfigRamT, runConfigRam, runRam, MonadRam, MonadConfigRam, flatToHost, realToHost, translateToHost, maxRam) where
 
+import Control.Lens
+import Control.Monad.IO.Class
+import Data.Maybe
+import Data.Word
+import Foreign.Ptr
+import System.Linux.Kvm.Errors
+import System.Linux.Kvm.IoCtl.Types.UserspaceMemoryRegion
+import System.Linux.Kvm.KvmM.Cpu 
+import System.Linux.Kvm.KvmM.Vm
 import qualified Ether.Reader as I
 import qualified Ether.State as I
 import qualified Ether.TagDispatch as I
 import qualified System.Linux.Kvm.IoCtl as C
-import System.Linux.Kvm.IoCtl.Types.UserspaceMemoryRegion
-import System.Linux.Kvm.KvmM.Cpu 
-import System.Linux.Kvm.KvmM.Vm
-import System.Linux.Kvm.Errors
-import Control.Monad.IO.Class
-import Foreign.Ptr
-import Data.Maybe
-import Data.Word
-import Control.Lens
-import Data.Bits
 
 data ConfigRam = ConfigRam { maxRam :: Int }
 data Ram = Ram

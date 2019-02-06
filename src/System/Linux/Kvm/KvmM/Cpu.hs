@@ -84,6 +84,7 @@ cpuContinue = do
                     regs_before .= newregs
                     sregs_before .= newsregs
 
+-- | call `cpuContinue` and repeat the given monad while the cpu should continue (until `vmStop`)
 cpuContinueUntilVmEnd::(MonadError m, MonadIO m, MonadCpu m, MonadVm m) => (KvmRunExit -> KvmRunT m ()) -> m ()
 cpuContinueUntilVmEnd act = doContinueVm >>= (\cont -> if cont then cpuContinue >> do
                                                                                     (exit, base) <- getExitReason
