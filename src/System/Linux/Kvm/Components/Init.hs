@@ -1,12 +1,13 @@
 {-# LANGUAGE ConstraintKinds  #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module System.Linux.Kvm.Components.Init (Init, InitT, MonadInit, runInit, loadBzImage, initCpuRegs) where
 
+import System.Linux.Kvm.Components.Init.E820Entry
 import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
-import Data.Bits
 import Data.Word
 import Foreign.C.String
 import Foreign.Marshal.Alloc
@@ -27,6 +28,8 @@ import qualified Ether.Except as I
 import qualified Ether.Reader as I
 import qualified Ether.State as I
 import qualified Ether.TagDispatch as I
+import System.Linux.Kvm.Components.Init.BootParams
+import Data.Bits
 
 data Init = Init
     { 
@@ -44,23 +47,14 @@ runInit ker ini cmd m = do
                             I.evalStateT' m $ Init { kernel=ker, initrd=ini, cmdline=cmd}
 
 
-readSetupHeader :: Fd -> IO SetupHeader
-readSetupHeader kernFd = allocaBytes bootParamsSize $ \bootParamsPtr -> do
-                                                    _ <- fdSeek kernFd AbsoluteSeek 0
-                                                    bytesRead <- fdReadBuf kernFd (castPtr bootParamsPtr) (fromIntegral bootParamsSize)
-                                                    when (bytesRead /= (fromIntegral bootParamsSize)) $ fail "bad kernel file"
-                                                    peekSetupHeader (getSetupHeader bootParamsPtr)
-
-
-bootProtocolRequired :: Word16
-bootProtocolRequired = 0x206
-
-bzDefaultSects = 4
-bzKernelStart =  0x100000 :: Word64
-
+bzKernelStart :: Word64
+bzKernelStart = 0x100000
 
 bootParamsStart :: Word64
 bootParamsStart = 0x20000
+
+kernelCmdLinePos :: Word64
+kernelCmdLinePos = 0x40000
 
 readAllFile:: (MonadIO m, MonadError m) => Fd -> Ptr () -> Int -> m ()
 readAllFile fd ptr count = do
@@ -68,36 +62,53 @@ readAllFile fd ptr count = do
                         nr <- execIO $ fromIntegral <$> fdReadBuf fd (castPtr ptr) (100 * 65536)
                         when (nr /= 0) $ readAllFile fd (plusPtr ptr nr) (count - nr)
 
+copyBootParams:: (Monad m, MonadRam m, MonadIO m, MonadError m) => Fd -> m (Ptr BootParams)
+copyBootParams kernFd = do
+                                bootParamsPtr <- castPtr <$> flatToHost bootParamsStart
+                                let setupHeaderPtr = getSetupHeader bootParamsPtr
+                                _ <- execIO $ fdSeek kernFd AbsoluteSeek (fromIntegral bootParamsOffset)
+                                (execIO $ fdReadBuf kernFd (castPtr setupHeaderPtr) (fromIntegral setupHeaderSize)) >>= (\nbytes -> when (nbytes /= (fromIntegral setupHeaderSize)) $ I.throw' ErrorBadKernelFile)
+                                return bootParamsPtr
+
+
+copyVmLinux :: (MonadBootParams m, MonadIO m, MonadConfigRam m, MonadError m, MonadRam m) => Fd -> Word64 -> Int -> m ()
+copyVmLinux fd pos seek = do
+                            _ <- execIO $ fdSeek fd AbsoluteSeek (fromIntegral seek)
+                            vmlinuxPtr <- flatToHost pos
+                            ramMax <- I.asks' maxRam
+                            readAllFile fd vmlinuxPtr (ramMax - (fromIntegral pos))
+
+writeCmdLine :: (MonadIO m, MonadInit m, MonadRam m, MonadBootParams m) => Word64 -> m ()
+writeCmdLine pos = do
+                    cmdlineV <- I.gets' cmdline
+                    cmdlinePtr <- flatToHost pos
+                    liftIO $ withCAStringLen cmdlineV $ \(cstr, len) -> copyBytes (castPtr cmdlinePtr) cstr len
+                    setCmdLinePtr $ fromIntegral pos
+                        
+
 loadBzImage :: (MonadRam m, MonadConfigRam m, MonadIO m, MonadError m, MonadVm m, MonadInit m) => m ()
 loadBzImage = do
                 kernelPath <- I.gets' kernel
                 kernFd <- execIO $ openFd kernelPath ReadOnly Nothing defaultFileFlags
-                setupHeader <- execIO $ readSetupHeader kernFd
-                setupHeader <- (`I.execStateT'`setupHeader)$ do 
-                    -- check setupHeader
-                    when (header setupHeader /= setupHeaderMagic) $ I.throw' ErrorBadKernelFile
-                    when (version setupHeader < bootProtocolRequired) $ I.throw' ErrorKernelTooOld
 
-                    let kernSetupSects = if (setup_sects setupHeader /= 0) then (setup_sects setupHeader) else bzDefaultSects
-                    let setupBinSize = 512 * (1 + fromIntegral kernSetupSects)
+                bootParams <- copyBootParams kernFd
+                
+                withBootParams bootParams $ do 
+                                                checkHeader
+                                                getBootProtocol >>= \protocol -> when (protocol < 0x206) $ I.throw' ErrorKernelTooOld
 
-                    -- copy vmlinux.bin
-                    _ <- execIO $ fdSeek kernFd AbsoluteSeek setupBinSize
-                    vmlinuxBinPtr <- flatToHost bzKernelStart
-                    ramMax <- I.asks' maxRam
-                    readAllFile kernFd vmlinuxBinPtr (ramMax - fromIntegral bzKernelStart)
-                    -- copy cmdline
-                    cmdlineV <- I.gets' cmdline
-                    let cmdlineAddr = bootParamsStart - fromIntegral (length cmdlineV + 1)
-                    cmdlinePtr <- flatToHost cmdlineAddr
-                    liftIO $ withCAStringLen cmdlineV $ \(cstr, len) -> copyBytes (castPtr cmdlinePtr) cstr len
+                                                setupBinSize <- getSetupBinSize
+                                                copyVmLinux kernFd bzKernelStart setupBinSize
 
-                    I.modify' (\x -> x { type_of_loader=0xff, heap_end_ptr=0xfe00, loadflags=(loadflags x .|. loadFlagsCanUseHeap .|. loadFlagsKeepSegments .|. loadFlagsLoadedHigh), cmd_line_ptr=(fromIntegral cmdlineAddr)})
+                                                writeCmdLine kernelCmdLinePos
 
-                    -- copy initrd
-                    -- TODO
-                bootParamsPtr <- flatToHost bootParamsStart
-                execIO $ pokeSetupHeader (getSetupHeader (castPtr bootParamsPtr)) setupHeader
+                                                setLoaderType 0xff
+                                                setHeapEndPtr 0xfe00
+                                                setLoadFlags (loadFlagsCanUseHeap <> loadFlagsKeepSegments <> loadFlagsLoadedHigh)
+
+                                                ramMax <- I.asks' maxRam
+                                                writeE820Entries [E820Entry { addr=0, size=0x100000, entrytype=E820_Ram }, E820Entry { addr=0x100000, size=(fromIntegral ramMax - 0x100000), entrytype=E820_Ram }]
+
 
 setupRegs:: Regs -> Regs
 setupRegs x = x { _rflags = 0x2

@@ -13,6 +13,7 @@ import System.Linux.Kvm.ExitHandler.Io
 import System.Linux.Kvm.IoCtl.Types.Cpuid2
 import qualified Data.ByteString as B
 import qualified Ether.TagDispatch as I
+import qualified Ether.State as I
 import System.Linux.Kvm.Debug
 import Control.Monad
 import Control.Lens
@@ -40,7 +41,7 @@ cpuSetup = do
 serialHandler :: (MonadIO m, MonadCpu m, MonadRam m)=> ExitHandler m
 serialHandler = mconcat [ handleIOin'' 0x3fd $ return 0x20
                         --,handleIOin'' 0x3fb $ return 0x20
-                        , handleIOout 0x3f8 $ (\x -> (liftIO $ B.putStr $ B.pack (elems x))) -- >> (when (x!0 == 0x42) $ I.tagAttach @Cpu $ guest_debug .= (guestDbgEnable <> guestDbgSinglestep)))
+                        , handleIOout 0x3f8 $ (\x -> (liftIO $ B.putStr $ B.pack (elems x)))-- >> (when (x!0 == 0x42) $ I.tagAttach @Cpu $ guest_debug .= (guestDbgEnable <> guestDbgSinglestep)))
                         ]
 
 
@@ -59,5 +60,5 @@ vmStop = do
 
 main :: IO ()
 main = do parseArgs $ do
-                    x <- runError $ runKvmT $ runVmT $ runRam $ loadBzImage >> vmSetup >> (runCpuT $ initCpuRegs >> cpuSetup >> dumpAll >> cpuContinueUntilVmEnd (\x -> vmHandle x )) >> vmStop
+                    x <- runError $ runKvmT $ runVmT $ runRam $ loadBzImage >> vmSetup >> (runCpuT $ initCpuRegs >> cpuSetup >> cpuContinueUntilVmEnd (\x -> vmHandle x )) >> vmStop
                     either (\err -> liftIO $ putStrLn $ "error " ++ show err) (const $ return ()) x

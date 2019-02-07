@@ -19,6 +19,7 @@ data Error = ErrorIO IOException
            | ErrorBadKernelFile
            | ErrorKernelTooOld
            | ErrorBadIoInHandler
+           | ErrorTooManyE820Entries
            deriving (Show)
 
 

@@ -69,4 +69,4 @@ translateToHost :: (MonadRam m, MonadCpu m, MonadIO m) => Word64 -> m (Ptr ())
 translateToHost addr = do
                          flat <- translateAddr addr
                          flatToHost flat
-                    
+
