@@ -17,6 +17,7 @@ import System.Linux.Kvm.IoCtl.Types.Cpuid2
 import System.Linux.Kvm.IoCtl.Types.KvmGuestDebug
 import System.Linux.Kvm.IoCtl.Types.KvmRun
 import System.Posix
+import System.Linux.Kvm.IoCtl.Types.PitConfig
 
 #include <linux/kvm.h>
 #include <sys/mman.h>
@@ -154,4 +155,9 @@ kvmSetCpuid (VcpuFd fd) cpuid = do
                                                                                 pokeCpuid ptr cpuid
                                                                                 r <- c_ioctl' fd (#const KVM_SET_CPUID2) ptr 
                                                                                 when (r == -1) $ fail "kvm:ioctl:set_cpuid returned an error"
+
+kvmCreatePit2 :: VmFd -> PitConfig -> IO ()
+kvmCreatePit2 (VmFd fd) pit = do
+                                r <- with pit $ c_ioctl' fd (#const KVM_CREATE_PIT2)
+                                when (r == -1) $ fail "kvm:ioctl:createpit2 returned an error"
 

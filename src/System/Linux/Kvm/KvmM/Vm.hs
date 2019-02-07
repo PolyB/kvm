@@ -14,6 +14,7 @@ module System.Linux.Kvm.KvmM.Vm
  ,setTss
  ,setIdentityMap
  ,createIRQChip
+ ,createPit2
  -- * Vm Properties
  ,doContinueVm
  ,vmfd
@@ -30,6 +31,7 @@ import Foreign
 import System.Linux.Kvm.Errors
 import System.Posix.IO
 import Control.Monad.IO.Class
+import System.Linux.Kvm.IoCtl.Types.PitConfig
 -- import System.Linux.Kvm.Components.Ram
 
 data Vm = Vm
@@ -83,3 +85,8 @@ vmfd = I.gets' _fd
 
 doContinueVm :: (MonadVm m) => m Bool
 doContinueVm = I.gets' _continueVm
+
+createPit2 :: (MonadVm m, MonadIO m, MonadError m) => PitConfig -> m ()
+createPit2 pit = do
+                  fd <- vmfd
+                  execIO $ C.kvmCreatePit2 fd pit

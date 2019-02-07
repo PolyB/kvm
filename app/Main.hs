@@ -18,6 +18,7 @@ import System.Linux.Kvm.Debug
 import Control.Monad
 import Control.Lens
 import System.Linux.Kvm.IoCtl.Types.KvmGuestDebug
+import System.Linux.Kvm.IoCtl.Types.PitConfig
 
 
 import Args
@@ -26,6 +27,7 @@ vmSetup :: (MonadIO m, MonadRam m, MonadError m, MonadVm m) => m ()
 vmSetup = do
               setTss 0xffffd000
               setIdentityMap 0xffffc000
+              createPit2 $ PitConfig 0
               createIRQChip
               liftIO $ putStrLn "setup"
 cpuSetup :: (MonadIO m, MonadCpu m, MonadError m) => m ()
@@ -40,7 +42,8 @@ cpuSetup = do
 
 serialHandler :: (MonadIO m, MonadCpu m, MonadRam m)=> ExitHandler m
 serialHandler = mconcat [ handleIOin'' 0x3fd $ return 0x20
-                        --,handleIOin'' 0x3fb $ return 0x20
+                        , handleIOin'' 0x3f9 $ return 0
+                        , handleIOout'' 0x3f9 $ const $ return ()
                         , handleIOout 0x3f8 $ (\x -> (liftIO $ B.putStr $ B.pack (elems x)))-- >> (when (x!0 == 0x42) $ I.tagAttach @Cpu $ guest_debug .= (guestDbgEnable <> guestDbgSinglestep)))
                         ]
 

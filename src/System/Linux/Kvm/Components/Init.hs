@@ -110,6 +110,7 @@ loadBzImage = do
                                                 writeE820Entries [E820Entry { addr=0, size=0x100000, entrytype=E820_Ram }, E820Entry { addr=0x100000, size=(fromIntegral ramMax - 0x100000), entrytype=E820_Ram }]
 
 
+
 setupRegs:: Regs -> Regs
 setupRegs x = x { _rflags = 0x2
                 , _rip = bzKernelStart
