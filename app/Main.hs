@@ -50,7 +50,7 @@ vmHandle = doHandle $ mconcat [genericSerialHandler 0x3f8
                               ,handleIOin'' 100 $ return 0 -- Not implemented
                               ,handleShutDown $ (liftIO $ putStrLn "[Shutdown]") >> stopVm
                               ,handleDebug $ (liftIO $ putStrLn "") >> return ()
-                              ,defaultHandle $ \x -> return () -- \x-> liftIO $ putStr "Not handled KVM_EXIT" >> print x
+                              ,defaultHandle $ \x-> liftIO $ putStr "Not handled KVM_EXIT" >> print x
                               ]
 
 vmStop :: (MonadIO m) => m ()
