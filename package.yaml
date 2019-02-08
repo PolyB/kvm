@@ -34,6 +34,7 @@ library:
     - transformers
     - ansi-terminal
     - disassembler
+    - typerep-map
 
 executables:
   kvm-exe:
