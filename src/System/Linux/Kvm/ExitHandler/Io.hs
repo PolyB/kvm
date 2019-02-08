@@ -27,12 +27,12 @@ handleIOout' ioportC handle = ExitHandler $ \h -> case h of
 
 handleIOin :: (Monad m, MonadError m, MonadIO m) => Word16 -> (Word32 -> KvmRunT m [Word8]) -> ExitHandler m
 handleIOin ioport handle = ExitHandler $ \h -> case h of
-                                                    (KvmRunExitIo (Io (IoDirectionIn ptr) port size)) | port == ioport -> handle size >>= (\arr -> if (fromIntegral $ length arr) /= size then I.throw' ErrorBadIoInHandler else liftIO $ pokeArray ptr arr) >> return True
+                                                    (KvmRunExitIo (Io (IoDirectionIn ptr) port size)) | port == ioport -> handle size >>= (\arr -> if (fromIntegral $ length arr) /= size then throwE ErrorBadIoInHandler "handleIoin" else liftIO $ pokeArray ptr arr) >> return True
                                                     _ -> return False
 
 handleIOin' :: (Monad m, MonadError m, MonadIO m) => (Word16 -> Bool) -> (Word32 -> KvmRunT m [Word8]) -> ExitHandler m
 handleIOin' ioportC handle = ExitHandler $ \h -> case h of
-                                                    (KvmRunExitIo (Io (IoDirectionIn ptr) port size)) | ioportC port -> handle size >>= (\arr -> if (fromIntegral $ length arr) /= size then I.throw' ErrorBadIoInHandler else liftIO $ pokeArray ptr arr) >> return True
+                                                    (KvmRunExitIo (Io (IoDirectionIn ptr) port size)) | ioportC port -> handle size >>= (\arr -> if (fromIntegral $ length arr) /= size then throwE ErrorBadIoInHandler "handleIOin'" else liftIO $ pokeArray ptr arr) >> return True
                                                     _ -> return False
 
 

@@ -66,6 +66,6 @@ instance Storable E820Entry where
 writeE820Entries :: (MonadIO m, MonadError m, MonadBootParams m) => [E820Entry] -> m ()
 writeE820Entries ents = do
                             ptr <- bootParams
-                            when (length ents > (#const E820_MAX_ENTRIES_ZEROPAGE)) $ I.throw' ErrorTooManyE820Entries
+                            when (length ents > (#const E820_MAX_ENTRIES_ZEROPAGE)) $ throwE ErrorTooManyE820Entries "writeE820Entries"
                             liftIO $ (#poke struct boot_params, e820_entries) ptr ((fromIntegral $ length ents):: Word8)
                             liftIO $ pokeArray ((#ptr struct boot_params, e820_table) ptr) ents

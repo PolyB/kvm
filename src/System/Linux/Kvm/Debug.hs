@@ -113,8 +113,11 @@ dumpAtIp = do
             liftIO $ debugHeader "Intruction dump at IP"
             regs <- I.tagAttach @Cpu $ use regs
             let ip = regs^.rip
-            addr <- castPtr <$> translateToHost ip
-            liftIO $ dumpInstrs addr ip 22
+            addr <- fmap castPtr <$> translateToHost ip
+            liftIO $ maybe 
+                            (putStrLn "Bad address")
+                            (\addr -> dumpInstrs addr ip 22)
+                            addr
 
 
 -- | Dump the Bytes of a memory region

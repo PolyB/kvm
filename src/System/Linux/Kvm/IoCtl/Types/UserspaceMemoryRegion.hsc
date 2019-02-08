@@ -17,6 +17,7 @@ data UserspaceMemoryRegion = UserspaceMemoryRegion {
   _memory_size :: Word64,
   _userspace_addr :: Ptr ()
 }
+    deriving (Show)
 makeLenses ''UserspaceMemoryRegion
 
 instance Storable UserspaceMemoryRegion where

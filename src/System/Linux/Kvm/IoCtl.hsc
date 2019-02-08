@@ -122,6 +122,12 @@ mmap l = do
            when ((ptrToIntPtr r) == (IntPtr (-1))) $ fail "kvm:ioctl:mmap failed"
            return r
 
+mmapFd :: Fd -> Int -> IO (Ptr ())
+mmapFd fd l = do
+                r <- c_mmap nullPtr (fromIntegral l) ((#const PROT_READ) .|. (#const PROT_WRITE)) (#const MAP_PRIVATE) (fromIntegral fd) 0
+                when ((ptrToIntPtr r) == (IntPtr (-1))) $ fail "kvm:ioctl:mmap failed"
+                return r
+
 
 allocKvmRun :: KvmFd -> VcpuFd -> IO (Ptr KvmRun)
 allocKvmRun kvm (VcpuFd fd) = do

@@ -17,12 +17,14 @@ import GHC.IO.Device
 import System.Linux.Kvm.Components.Init.SetupHeader
 import System.Linux.Kvm.Components.Ram
 import System.Linux.Kvm.Errors
+import qualified System.Linux.Kvm.IoCtl as C
 import System.Linux.Kvm.IoCtl.Types.Regs
 import System.Linux.Kvm.IoCtl.Types.SRegs
 import System.Linux.Kvm.IoCtl.Types.Segment
 import System.Linux.Kvm.KvmM.Cpu
 import System.Linux.Kvm.KvmM.Vm
 import System.Posix.IO
+import System.Posix.Files
 import System.Posix.Types
 import qualified Ether.Except as I
 import qualified Ether.Reader as I
@@ -58,33 +60,53 @@ kernelCmdLinePos = 0x40000
 
 readAllFile:: (MonadIO m, MonadError m) => Fd -> Ptr () -> Int -> m ()
 readAllFile fd ptr count = do
-                        when (count < 0) $ I.throw' ErrorTooMuchRamUsed
+                        when (count < 0) $ throwE ErrorTooMuchRamUsed "readAllFile"
                         nr <- execIO $ fromIntegral <$> fdReadBuf fd (castPtr ptr) (100 * 65536)
                         when (nr /= 0) $ readAllFile fd (plusPtr ptr nr) (count - nr)
 
 copyBootParams:: (Monad m, MonadRam m, MonadIO m, MonadError m) => Fd -> m (Ptr BootParams)
 copyBootParams kernFd = do
-                                bootParamsPtr <- castPtr <$> flatToHost bootParamsStart
+                                bootParamsPtr <- castPtr <$> flatToHost' bootParamsStart
                                 let setupHeaderPtr = getSetupHeader bootParamsPtr
                                 _ <- execIO $ fdSeek kernFd AbsoluteSeek (fromIntegral bootParamsOffset)
-                                (execIO $ fdReadBuf kernFd (castPtr setupHeaderPtr) (fromIntegral setupHeaderSize)) >>= (\nbytes -> when (nbytes /= (fromIntegral setupHeaderSize)) $ I.throw' ErrorBadKernelFile)
+                                (execIO $ fdReadBuf kernFd (castPtr setupHeaderPtr) (fromIntegral setupHeaderSize)) >>= (\nbytes -> when (nbytes /= (fromIntegral setupHeaderSize)) $ throwE ErrorBadKernelFile "copyBootParams")
                                 return bootParamsPtr
 
 
 copyVmLinux :: (MonadBootParams m, MonadIO m, MonadConfigRam m, MonadError m, MonadRam m) => Fd -> Word64 -> Int -> m ()
-copyVmLinux fd pos seek = do
+copyVmLinux fd pos seek = exTag "copyVmLinux" $ do
                             _ <- execIO $ fdSeek fd AbsoluteSeek (fromIntegral seek)
-                            vmlinuxPtr <- flatToHost pos
+                            vmlinuxPtr <- flatToHost' pos
                             ramMax <- I.asks' maxRam
                             readAllFile fd vmlinuxPtr (ramMax - (fromIntegral pos))
 
-writeCmdLine :: (MonadIO m, MonadInit m, MonadRam m, MonadBootParams m) => Word64 -> m ()
+writeCmdLine :: (MonadIO m, MonadInit m, MonadRam m, MonadBootParams m, MonadError m) => Word64 -> m ()
 writeCmdLine pos = do
                     cmdlineV <- I.gets' cmdline
-                    cmdlinePtr <- flatToHost pos
+                    cmdlinePtr <- flatToHost' pos
                     liftIO $ withCAStringLen cmdlineV $ \(cstr, len) -> copyBytes (castPtr cmdlinePtr) cstr len
                     setCmdLinePtr $ fromIntegral pos
+
+setupInitRd :: (MonadIO m, MonadInit m, MonadRam m, MonadBootParams m, MonadError m, MonadVm m) => String -> m ()
+setupInitRd initrdPath = exTag "setupInitRd" $ do
+                            initrdFd <- execIO $ openFd initrdPath ReadOnly Nothing defaultFileFlags
+                            size <- execIO $ fileSize <$> getFdStatus initrdFd
+                            addr_max <- getInitrdAddrMax
+                            -- TODO : check sizes
+                            let addr_start = addr_max - (fromIntegral size)
+                            let addr_start_aligned = addr_start - (addr_start `mod`0x200000)
+                            let size_aligned = size + (0x200000 - size `mod`0x200000)
+                            liftIO $ print size_aligned
+                            initrdptr <- execIO $ C.mmapFd initrdFd (fromIntegral size)
+                            mapMemRegion initrdptr (fromIntegral size_aligned) (fromIntegral addr_start_aligned)
+
+                            setRamDiskImage addr_start_aligned
+                            setRamDiskSize (fromIntegral size)
+                    
                         
+withM  :: (Monad m) => Maybe a -> (a -> m ()) -> m ()
+withM (Just a) m = m a
+withM Nothing _ = return ()
 
 loadBzImage :: (MonadRam m, MonadConfigRam m, MonadIO m, MonadError m, MonadVm m, MonadInit m) => m ()
 loadBzImage = do
@@ -95,7 +117,7 @@ loadBzImage = do
                 
                 withBootParams bootParams $ do 
                                                 checkHeader
-                                                getBootProtocol >>= \protocol -> when (protocol < 0x206) $ I.throw' ErrorKernelTooOld
+                                                getBootProtocol >>= \protocol -> when (protocol < 0x206) $ throwE ErrorKernelTooOld "loadBzImage"
 
                                                 setupBinSize <- getSetupBinSize
                                                 copyVmLinux kernFd bzKernelStart setupBinSize
@@ -108,6 +130,12 @@ loadBzImage = do
 
                                                 ramMax <- I.asks' maxRam
                                                 writeE820Entries [E820Entry { addr=0, size=0x100000, entrytype=E820_Ram }, E820Entry { addr=0x100000, size=(fromIntegral ramMax - 0x100000), entrytype=E820_Ram }]
+
+
+                                                initrdCfg <- I.gets' initrd
+                                                withM initrdCfg setupInitRd                 
+
+
 
 
 

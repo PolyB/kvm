@@ -6,6 +6,7 @@ import Control.Monad.IO.Class
 import Data.Array.IArray
 import System.Linux.Kvm
 import System.Linux.Kvm.Components.Init
+import Data.Word
 import System.Linux.Kvm.Components.Ram
 import System.Linux.Kvm.Debug
 import System.Linux.Kvm.ExitHandler
@@ -40,20 +41,24 @@ cpuSetup = do
                                 ,mkCpuidEntry 0x80000001 0 0 0 0x20100800]
             return ()
 
-serialHandler :: (MonadIO m, MonadCpu m, MonadRam m)=> ExitHandler m
-serialHandler = mconcat [ handleIOin'' 0x3fd $ return 0x20
-                        , handleIOin'' 0x3f9 $ return 0
-                        , handleIOout'' 0x3f9 $ const $ return ()
-                        , handleIOout 0x3f8 $ (\x -> (liftIO $ B.putStr $ B.pack (elems x)))-- >> (when (x!0 == 0x42) $ I.tagAttach @Cpu $ guest_debug .= (guestDbgEnable <> guestDbgSinglestep)))
-                        ]
+serialHandler :: (MonadIO m, MonadCpu m, MonadRam m) => Word16 -> ExitHandler m
+serialHandler port = mconcat [ handleIOin'' (port + 5) $ return 0x20
+                             , handleIOin'' (port + 1) $ return 0
+                             , handleIOout'' (port + 1) $ const $ return ()
+                             , handleIOout port $ (\x -> (liftIO $ B.putStr $ B.pack (elems x)))
+                             ]
 
 
 vmHandle :: (MonadIO m, MonadVm m, MonadCpu m, MonadRam m) => KvmRunExit -> KvmRunT m ()
-vmHandle = doHandle $ mconcat [serialHandler
+vmHandle = doHandle $ mconcat [serialHandler 0x3f8
+                              ,serialHandler 0x2f8
+                              ,serialHandler 0x3e8
+                              ,serialHandler 0x2e8
                               ,handleHlt $ (liftIO $ putStrLn "\ngot hlt, stopping") >> stopVm
+                              ,handleIOin'' 100 $ return 0 -- Not implemented
                               ,handleShutDown $ (liftIO $ putStrLn "[Shutdown]") >> stopVm
-                              ,handleDebug $ dumpAll
-                              ,defaultHandle $ \x-> liftIO $  print x
+                              ,handleDebug $ (liftIO $ putStrLn "") >> return ()
+                              ,defaultHandle $ \x-> liftIO $ putStr "Not handled KVM_EXIT" >> print x
                               ]
 
 vmStop :: (MonadIO m) => m ()

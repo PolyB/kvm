@@ -2,7 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeApplications #-}
-module System.Linux.Kvm.Components.Ram (Ram, RamT, ConfigRamT, runConfigRam, runRam, MonadRam, MonadConfigRam, flatToHost, realToHost, translateToHost, maxRam) where
+module System.Linux.Kvm.Components.Ram (Ram, RamT, ConfigRamT, runConfigRam, runRam, MonadRam, mapMemRegion, MonadConfigRam, flatToHost, flatToHost', translateToHost, maxRam) where
 
 import Control.Lens
 import Control.Monad.IO.Class
@@ -13,6 +13,7 @@ import System.Linux.Kvm.Errors
 import System.Linux.Kvm.IoCtl.Types.UserspaceMemoryRegion
 import System.Linux.Kvm.KvmM.Cpu 
 import System.Linux.Kvm.KvmM.Vm
+import Control.Monad
 import qualified Ether.Reader as I
 import qualified Ether.State as I
 import qualified Ether.TagDispatch as I
@@ -49,13 +50,12 @@ runRam act = do
                 return r
 
 -- TODO : use userSpaceMemRegions for translating addresses
-flatToHost::(MonadRam m) => Word64 -> m (Ptr ())
-flatToHost off = (\x -> plusPtr x (fromIntegral off)) <$> I.gets' _ramStart
+flatToHost::(MonadRam m) => Word64 -> m (Maybe (Ptr ()))
+flatToHost addr = let getAddr (UserspaceMemoryRegion _ _ guestAddr regionSize userAddr) = if (addr >= guestAddr && addr < guestAddr + regionSize) then (Just $ plusPtr userAddr (fromIntegral addr)) else Nothing
+                  in msum <$> map getAddr <$> I.gets' _userSpaceMemRegions
 
-
-realToHost::(MonadRam m) => Word16 -> Word16 -> m (Ptr ())
-realToHost sel off = let flat = ((fromIntegral sel) * 16) + (fromIntegral off)
-                     in flatToHost flat
+flatToHost'::(MonadRam m, MonadError m) => Word64 -> m (Ptr ())
+flatToHost' addr = flatToHost addr >>= maybe (throwE ErrorBadAddress "flatToHost'") return
 
 mapMemRegion:: (MonadError m, MonadRam m, MonadVm m, MonadIO m) => Ptr () -> Int -> Word64 -> m ()
 mapMemRegion host size guest = do
@@ -65,8 +65,7 @@ mapMemRegion host size guest = do
                                     fd <- vmfd
                                     execIO $ C.setUserMemoryRegion fd newslot
 
-translateToHost :: (MonadRam m, MonadCpu m, MonadIO m) => Word64 -> m (Ptr ())
+translateToHost :: (MonadRam m, MonadCpu m, MonadIO m) => Word64 -> m (Maybe (Ptr ()))
 translateToHost addr = do
                          flat <- translateAddr addr
                          flatToHost flat
-
