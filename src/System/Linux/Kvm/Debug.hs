@@ -59,7 +59,7 @@ dumpVars n v = let
 -- | Dump cpu regsisters
 dumpRegs ::(MonadIO m, MonadCpu m) => m ()
 dumpRegs = do
-            r <- I.tagAttach @Cpu $ use regs
+            r <- lget
             liftIO $ dumpVars  "Regs" [("rax", r^.rax)
                                 ,("rbx", r^.rbx)
                                 ,("rcx", r^.rcx)
@@ -82,7 +82,7 @@ dumpRegs = do
 dumpSRegs :: (MonadIO m, MonadCpu m) => m ()
 dumpSRegs = do
              let showSeg (Segment base limit selector stype present dpl db s l g avl) = "{base: 0x" ++ showHex base ", limit: 0x" ++ showHex limit ", selector : 0x" ++ showHex selector ", present :" ++ (if present /= 0 then "Y" else "N") ++ ", stype : 0x" ++ showHex stype "}"
-             r <- I.tagAttach @Cpu $ use sregs
+             r <- lget
              liftIO $ dumpVars "System Regs" [("cr0", r^.cr0)
                                ,("cr2", r^.cr2)
                                ,("cr3", r^.cr3)
@@ -111,7 +111,7 @@ dumpInstrs ptr showAddr l = do
 dumpAtIp :: (MonadCpu m, MonadRam m, MonadIO m) => m ()
 dumpAtIp = do
             liftIO $ debugHeader "Intruction dump at IP"
-            regs <- I.tagAttach @Cpu $ use regs
+            regs <- lget
             let ip = regs^.rip
             addr <- fmap castPtr <$> translateToHost ip
             liftIO $ maybe 

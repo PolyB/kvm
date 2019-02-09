@@ -159,7 +159,5 @@ setupSRegs x = x { _cs = (x^.cs) { _base = 0, _limit = 0xffffffff, _g = 1, _pres
                  , _gs = (x^.gs) { _base = 0, _limit = 0xffffffff, _g = 1, _present = 1 }
                  , _cr0 = setBit (x^.cr0) 0
                 }
-initCpuRegs::MonadCpu m => m ()
-initCpuRegs = I.tagAttach @Cpu $ do
-                                    regs %= setupRegs
-                                    sregs %= setupSRegs
+initCpuRegs::(MonadIO m, MonadCpu m) => m ()
+initCpuRegs = lmodify setupRegs >> lmodify setupSRegs
