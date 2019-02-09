@@ -42,15 +42,15 @@ cpuSetup = do
 
 
 vmHandle :: (MonadIO m, MonadVm m, MonadCpu m, MonadRam m, MonadHandlerState m) => KvmRunExit -> KvmRunT m ()
-vmHandle = doHandle $ mconcat [genericSerialHandler 0x3f8
-                              ,genericSerialHandler 0x2f8
-                              ,genericSerialHandler 0x3e8
-                              ,genericSerialHandler 0x2e8
+vmHandle = doHandle $ mconcat [genericSerialHandler $ SerialCfg { iobase = 0x3f8, irq = 1 }
+                              ,genericSerialHandler $ SerialCfg { iobase = 0x2f8, irq = 2 }
+                              ,genericSerialHandler $ SerialCfg { iobase = 0x3e8, irq = 3 }
+                              ,genericSerialHandler $ SerialCfg { iobase = 0x2e8, irq = 4 }
                               ,handleHlt $ (liftIO $ putStrLn "\ngot hlt, stopping") >> stopVm
                               ,handleIOin'' 100 $ return 0 -- Not implemented
                               ,handleShutDown $ (liftIO $ putStrLn "[Shutdown]") >> stopVm
                               ,handleDebug $ (liftIO $ putStrLn "") >> return ()
-                              ,defaultHandle $const $ return () -- $ \x-> liftIO $ putStr "Not handled KVM_EXIT" >> print x
+                              ,defaultHandle  $ \x-> liftIO $ putStr "Not handled KVM_EXIT" >> print x
                               ]
 
 vmStop :: (MonadIO m) => m ()

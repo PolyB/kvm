@@ -43,3 +43,13 @@ handleIOin'' ioport handle = ExitHandler $ \h -> case h of
 
 handleIOout'' :: (Monad m, MonadIO m) => Word16 -> (Word8 -> m ()) -> ExitHandler m
 handleIOout'' ioport handle = handleIOout ioport (\s -> void $ forM s handle)
+
+handleIOgroupin :: (Monad m, MonadIO m) => (Word16 -> Bool) -> (Word16 -> m Word8) -> ExitHandler m
+handleIOgroupin ioportC handle = ExitHandler $ \h -> case h of
+                                                        (KvmRunExitIo (Io (IoDirectionIn ptr) port size)) | ioportC port -> Just $ replicateM (fromIntegral size) (handle port) >>= (\arr -> liftIO $ pokeArray ptr arr)
+                                                        _ -> Nothing
+
+handleIOgroupout :: (Monad m, MonadIO m) => (Word16 -> Bool) -> (Word16 -> Word8 -> m ()) -> ExitHandler m
+handleIOgroupout ioportC handle = ExitHandler $ \h -> case h of
+                                                        (KvmRunExitIo (Io (IoDirectionOut out) port _)) | ioportC port -> Just $ void $ forM out (handle port)
+                                                        _ -> Nothing

@@ -15,6 +15,7 @@ module System.Linux.Kvm.KvmM.Vm
  ,setIdentityMap
  ,createIRQChip
  ,createPit2
+ ,irqLine
  -- * Vm Properties
  ,doContinueVm
  ,vmfd
@@ -90,3 +91,8 @@ createPit2 :: (MonadVm m, MonadIO m, MonadError m) => PitConfig -> m ()
 createPit2 pit = do
                   fd <- vmfd
                   execIO $ C.kvmCreatePit2 fd pit
+
+irqLine :: (MonadIO m, MonadVm m) => Word32 -> Word32 -> m ()
+irqLine irq level = do
+                        fd <- vmfd
+                        liftIO $ C.kvmIrqLine fd irq level

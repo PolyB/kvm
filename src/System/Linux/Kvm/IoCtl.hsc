@@ -167,3 +167,11 @@ kvmCreatePit2 (VmFd fd) pit = do
                                 r <- with pit $ c_ioctl' fd (#const KVM_CREATE_PIT2)
                                 when (r == -1) $ fail "kvm:ioctl:createpit2 returned an error"
 
+
+kvmIrqLine :: VmFd -> Word32 -> Word32 -> IO ()
+kvmIrqLine (VmFd fd) irq level = do
+                                    allocaBytes (#size struct kvm_irq_level) $ \ptr -> do
+                                                                                        (#poke struct kvm_irq_level, irq) ptr irq
+                                                                                        (#poke struct kvm_irq_level, level) ptr level
+                                                                                        r <- c_ioctl' fd (#const KVM_IRQ_LINE) ptr
+                                                                                        when (r == -1) $ fail "kvm:ioctl:set_cpuid returned an error"
