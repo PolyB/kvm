@@ -96,7 +96,6 @@ setupInitRd initrdPath = exTag "setupInitRd" $ do
                             let addr_start = addr_max - (fromIntegral size)
                             let addr_start_aligned = addr_start - (addr_start `mod`0x200000)
                             let size_aligned = size + (0x200000 - size `mod`0x200000)
-                            liftIO $ print size_aligned
                             initrdptr <- execIO $ C.mmapFd initrdFd (fromIntegral size)
                             mapMemRegion initrdptr (fromIntegral size_aligned) (fromIntegral addr_start_aligned)
 
