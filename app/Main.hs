@@ -27,8 +27,9 @@ vmSetup :: (MonadIO m, MonadRam m, MonadError m, MonadVm m) => m ()
 vmSetup = do
               setTss 0xffffd000
               setIdentityMap 0xffffc000
-              createPit2 $ PitConfig 0
               createIRQChip
+              createPit2 $ PitConfig 0
+
               liftIO $ putStrLn "setup"
 cpuSetup :: (MonadIO m, MonadCpu m, MonadError m) => m ()
 cpuSetup = do
